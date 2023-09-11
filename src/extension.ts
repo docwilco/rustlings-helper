@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import { Uri } from 'vscode';
 import * as toml from 'toml';
+import * as child_process from 'child_process';
 
 type Exercise = {
 	name: string,
@@ -82,8 +83,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	// call updateRustlingsFolders() when the workspace folders change
 	context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(updateRustlingsFolders));
 
-	// call checkExercise() when the user saves a file
-	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(checkExercise));
+	// check active editor when it changes
+	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(provider.checkActiveEditor));
+
+	// Since editors can be active before the extension is activated, check the
+	// active editor now.
+	provider.checkActiveEditor(vscode.window.activeTextEditor);
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
@@ -130,10 +135,13 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage(async (data) => {
 			switch (data.type) {
 				case 'watch':
-					console.log('Watch');
+					rustlingsWatch();
 					break;
 				case 'hint':
 					console.log('Hint');
+					break;
+				case 'done':
+					this.done();
 					break;
 			}
 		});
@@ -162,13 +170,56 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
 				<div id="root">
 					<div id="info">
 					</div>
+					Use "Watch" to 
 					<button id="watch-button">Watch</button>
 					<button id="hint-button">Show Hint</button>
-					Hello World
+					<button id="done-button">Done</button>
 				</div>
 				<script nonce="${nonce}" src="${scriptUri}"></script>
 			</body>
 			</html>`;
+	}
+
+	public async checkActiveEditor(editor: vscode.TextEditor | undefined) {
+		const exerciseOpen = editor !== undefined && isExercise(editor.document.uri);
+		vscode.commands.executeCommand('setContext', 'rustlings-helper:exerciseOpen', exerciseOpen);
+	}
+
+
+	public async done() {
+		const editor = vscode.window.activeTextEditor;
+		if (editor === undefined) {
+			return;
+		}
+		const document = editor.document;
+		if (!isExercise(document.uri)) {
+			vscode.window.showErrorMessage('This file is not part of a rustlings exercise');
+			return;
+		}
+		if (document.isDirty) {
+			vscode.window.showErrorMessage('Please save your file before marking it as done');
+			return;
+		}
+		const iAmDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE/m;
+		let text = document.getText();
+		let matches = text.match(iAmDoneRegex);
+		if (matches === null) {
+			vscode.window.showInformationMessage('This file is already marked as done');
+			return;
+		}
+		while (matches !== null) {
+			const start = text.indexOf(matches[0]);
+			const deleteRange = new vscode.Range(
+				document.positionAt(start),
+				document.positionAt(start + matches[0].length)
+			);
+			await editor.edit((editBuilder) => {
+				editBuilder.delete(deleteRange);
+			});
+			text = document.getText();
+			matches = text.match(iAmDoneRegex);
+		}
+		await document.save();
 	}
 }
 
@@ -181,29 +232,39 @@ function getNonce() {
 	return text;
 }
 
-function checkExercise(document: vscode.TextDocument) {
-	console.log('Document saved:', document.uri);
+function isExercise(uri: Uri): boolean {
 	const rustlings = rustlingsFolders.find((rustlings) => {
 		let folder = rustlings.folder;
 		// Instead of checking whether everything is the same, construct a URI
 		// with the same path as the document, using the folder's URI. Then
 		// compare the two URIs in string form. This is necessary because there
 		// are private fields that might differ because they're caches.
-		const pathIntoFolderUri = folder.uri.with({ path: document.uri.path });
-		return document.uri.path.startsWith(folder.uri.path) && (pathIntoFolderUri.toString() === document.uri.toString());
+		const pathIntoFolderUri = folder.uri.with({ path: uri.path });
+		return uri.path.startsWith(folder.uri.path) && (pathIntoFolderUri.toString() === uri.toString());
 	});
 	if (rustlings === undefined) {
 		console.log('Not a rustlings folder');
-		return;
+		return false;
 	}
-	console.log('Rustlings folder:', rustlings.folder.uri.path);
 	const exercise = rustlings.exercises.find((exercise) => {
-		return document.uri.path.endsWith(exercise.path);
+		const exerciseUri = Uri.joinPath(rustlings.folder.uri, exercise.path);
+		// We already know that everything else matches, so just check the path.
+		return uri.path === exerciseUri.path;
 	});
 	if (exercise === undefined) {
-		console.log('Not a rustlings exercise');
-		return;
+		return false;
 	}
-	console.log('Rustlings exercise:', exercise.name);
-	
+	return true;	
+}
+
+let watchTerminal: vscode.Terminal | undefined = undefined;
+
+function rustlingsWatch() {
+	if (watchTerminal === undefined || watchTerminal.exitStatus !== undefined) {
+		if (watchTerminal?.exitStatus) {
+			watchTerminal.dispose();
+		}
+		watchTerminal = vscode.window.createTerminal('Rustlings Watch', 'rustlings', ['watch']);
+	}
+	watchTerminal.show();
 }

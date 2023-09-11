@@ -8,11 +8,14 @@
     const oldState = vscode.getState() || { colors: [] };
 
     console.log('in main.js');
-    document.querySelector('.watch-button').addEventListener('click', () => {
+    document.querySelector('#watch-button')?.addEventListener('click', () => {
         vscode.postMessage({ type: 'watch' });
     });
-    document.querySelector('.hint-button').addEventListener('click', () => {
+    document.querySelector('#hint-button')?.addEventListener('click', () => {
         vscode.postMessage({ type: 'hint' });
+    });
+    document.querySelector('#done-button')?.addEventListener('click', () => {
+        vscode.postMessage({ type: 'done'});
     });
 
     // Handle messages sent from the extension to the webview

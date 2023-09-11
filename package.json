@@ -30,12 +30,17 @@
           "id": "rustlingsHelper.view",
           "type": "webview",
           "name": "Rustlings Helper",
-          "when": "rustlings-helper:hasRustlings"
+          "when": "rustlings-helper:hasRustlings && rustlings-helper:exerciseOpen"
+        },
+        {
+          "id": "rustlingsHelper.noExerciseOpen.view",
+          "name": "Rustlings Helper",
+          "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen"
         },
         {
           "id": "rustlingsHelper.noRustlings.view",
           "name": "Rustlings Helper",
-          "when": "!rustlings-helper:hasRustlings"
+          "when": "!rustlings-helper:hasRustlings "
         }
       ]
     },
@@ -44,6 +49,11 @@
         "view": "rustlingsHelper.noRustlings.view",
         "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
         "when": "!rustlings-helper:hasRustlings"
+      },
+      {
+        "view": "rustlingsHelper.noExerciseOpen.view",
+        "contents": "No exercise open. Please open an exercise.\n[Open Exercise](command:rustlings-helper.openExercise)\n",
+        "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen"
       }
     ],
     "commands": [
