@@ -1,6 +1,7 @@
 {
   "name": "rustlings-helper",
   "displayName": "Rustlings Helper",
+  "publisher": "drwilco",
   "description": "Go through Rustlings exercises quicker",
   "version": "0.0.1",
   "engines": {
@@ -14,6 +15,37 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rustlings-helper",
+          "title": "Rustlings Helper",
+          "icon": "media/rustlings.svg"
+        }
+      ]
+    },
+    "views": {
+      "rustlings-helper": [
+        {
+          "id": "rustlingsHelper.view",
+          "type": "webview",
+          "name": "Rustlings Helper",
+          "when": "rustlings-helper:hasRustlings"
+        },
+        {
+          "id": "rustlingsHelper.noRustlings.view",
+          "name": "Rustlings Helper",
+          "when": "!rustlings-helper:hasRustlings"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "rustlingsHelper.noRustlings.view",
+        "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
+        "when": "!rustlings-helper:hasRustlings"
+      }
+    ],
     "commands": [
       {
         "command": "rustlings-helper.helloWorld",
