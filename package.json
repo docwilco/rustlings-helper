@@ -52,14 +52,59 @@
       },
       {
         "view": "rustlingsHelper.noExerciseOpen.view",
-        "contents": "No exercise open. Please open an exercise.\n[Open Exercise](command:rustlings-helper.openExercise)\n",
-        "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen"
+        "contents": "No exercise open. Please open an exercise.\n[Open Next Exercise](command:rustlings-helper.openNextExercise)\n",
+        "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen && !rustlings-helper:allDone"
+      },
+      {
+        "view": "rustlingsHelper.noExerciseOpen.view",
+        "contents": "Congratulations! You have completed all exercises.\n",
+        "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen && rustlings-helper:allDone"
       }
     ],
     "commands": [
       {
-        "command": "rustlings-helper.helloWorld",
-        "title": "Hello World"
+        "command": "rustlings-helper.openNextExercise",
+        "title": "Open Next Exercise",
+        "when": "rustlings-helper:hasRustlings",
+        "category": "Rustlings Helper"
+      },
+      {
+        "command": "rustlings-helper.openExercise",
+        "title": "Open Exercise",
+        "when": "rustlings-helper:hasRustlings",
+        "category": "Rustlings Helper"
+      },
+      {
+        "command": "rustlings-helper.done",
+        "title": "Mark Exercise as Done",
+        "when": "rustlings-helper:exerciseOpen",
+        "category": "Rustlings Helper"
+      },
+      {
+        "command": "rustlings-helper.watch",
+        "title": "Start Rustlings Watch",
+        "when": "rustlings-helper:hasRustlings",
+        "category": "Rustlings Helper"
+      },
+      {
+        "command": "rustlings-helper.hint",
+        "title": "Show Hint",
+        "when": "rustlings-helper:exerciseOpen",
+        "category": "Rustlings Helper"
+      },
+      {
+        "command": "rustlings-helper.readme",
+        "title": "Open README for section",
+        "when": "rustlings-helper:exerciseOpen",
+        "category": "Rustlings Helper"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "rustlings-helper.done",
+        "key": "ctrl+alt+d",
+        "mac": "ctrl+cmd+d",
+        "when": "rustlings-helper:exerciseOpen"
       }
     ]
   },
@@ -72,6 +117,7 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
+    "@types/child-process-promise": "^2.2.3",
     "@types/mocha": "^10.0.1",
     "@types/node": "16.x",
     "@types/vscode": "^1.82.0",
@@ -84,6 +130,10 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
+    "@types/markdown-it": "^13.0.1",
+    "@vscode/webview-ui-toolkit": "^1.2.2",
+    "child-process-promise": "^2.2.1",
+    "markdown-it": "^13.0.1",
     "toml": "^3.0.0"
   }
 }
