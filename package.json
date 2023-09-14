@@ -27,18 +27,18 @@
     "views": {
       "rustlings-helper": [
         {
-          "id": "rustlingsHelper.view",
-          "type": "webview",
-          "name": "Rustlings Helper",
+          "id": "rustlingsHelper.exercisesView",
+          "type": "tree",
+          "name": "Exercises",
           "icon": "media/rustlings.svg",
-          "when": "rustlings-helper:hasRustlings && rustlings-helper:exerciseOpen"
+          "when": "rustlings-helper:hasRustlings"
         },
         {
           "id": "rustlingsHelper.welcomeView",
           "type": "tree",
           "name": "Rustlings Helper",
           "icon": "media/rustlings.svg",
-          "when": "!rustlings-helper:hasRustlings || !rustlings-helper:exerciseOpen"
+          "when": "!rustlings-helper:hasRustlings"
         }
       ]
     },
@@ -113,17 +113,17 @@
       "view/title": [
         {
           "command": "rustlings-helper.watch",
-          "when": "(view == rustlingsHelper.view || view == rustlingsHelper.welcomeView) && rustlings-helper:hasRustlings && !rustlings-helper:watching",
+          "when": "(view == rustlingsHelper.exercisesView || view == rustlingsHelper.welcomeView) && rustlings-helper:hasRustlings && !rustlings-helper:watching",
           "group": "navigation"
         },
         {
           "command": "rustlings-helper.toggleDone",
-          "when": "view == rustlingsHelper.view && rustlings-helper:exerciseOpen",
+          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:exerciseOpen",
           "group": "navigation"
         },
         {
           "command": "rustlings-helper.hint",
-          "when": "view == rustlingsHelper.view && rustlings-helper:exerciseOpen",
+          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:exerciseOpen",
           "group": "navigation"
         },
         {
