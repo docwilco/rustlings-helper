@@ -7,12 +7,6 @@ import * as child_process from 'child_process';
 import * as child_process_promise from 'child-process-promise';
 import MarkdownIt from 'markdown-it';
 
-// import {
-//     provideVSCodeDesignSystem,
-// 	   vsCodeButton
-// } from "@vscode/webview-ui-toolkit";
-
-
 type Exercise = {
     name: string,
     path: string,
@@ -78,6 +72,18 @@ export async function activate(context: vscode.ExtensionContext) {
     // active editor now.
     provider.checkActiveEditor(vscode.window.activeTextEditor, true);
 
+    context.subscriptions.push(
+        vscode.window.onDidCloseTerminal((terminal) => {
+            provider.terminalClosed(terminal);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTerminal((terminal) => {
+            provider.activeTerminalChanged(terminal);
+        })
+    );
+
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
     // The commandId parameter must match the command field in package.json
@@ -100,8 +106,8 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlings-helper.done', () => {
-            provider.markAsDone();
+        vscode.commands.registerCommand('rustlings-helper.toggleDone', () => {
+            provider.toggleDone();
         })
     );
     context.subscriptions.push(
@@ -224,12 +230,6 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
-                case 'watch':
-                    this.rustlingsWatch();
-                    break;
-                case 'done':
-                    this.markAsDone();
-                    break;
                 case 'infoRequest':
                     const editor = vscode.window.activeTextEditor;
                     if (editor === undefined) {
@@ -239,9 +239,6 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'autoDone':
                     this._autoDone = data.value;
-                    break;
-                case 'readme':
-                    this.showReadme();
                     break;
             }
         });
@@ -269,23 +266,9 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
             </head>
             <body>
                 <div id="root">
-                    <div id="info">
-                        Exercise: <div id="exercise-name">loading...</div><br>
-                        Status: <div id="exercise-status">loading...</div><br>
-                        Hint: <div id="exercise-hint"></div><br>
-                    </div>
-                    <input type="checkbox" id="autodone-checkbox" title="Automatically mark the file as done when it compiles/passes tests, so that the next exercise will open">
-                    <label for="autodone-checkbox" title="Automatically mark the file as done when it compiles/passes tests, so that the next exercise will open">Automatically mark as done</label><br>
-                    <button id="watch-button" title="Run the \`rustlings watch\` command in a terminal">Watch</button><br>
-                    <button id="readme-button">Show Readme</button><br>
-                    <button id="hint-button">Show Hint</button><br>
-                    <button id="done-button">Mark as Done</button><br>
-                </div>
-                <div id="new-root">
-                    <vscode-text-field readonly value="loading...">Exercise</vscode-text-field>
-                    <vscode-text-field readonly value="loading...">Status</vscode-text-field>
-                    <vscode-checkbox id="autodone-checkbox2" title="Automatically mark the file as done when it compiles/passes tests, so that the next exercise will open upon success">Automatically mark as done</vscode-checkbox>
-                    <vscode-button id="watch-button2" title="Run the \`rustlings watch\` command in a terminal">Watch</vscode-button>
+                    <vscode-text-field id="exercise-name" readonly value="loading...">Exercise</vscode-text-field>
+                    <vscode-text-field id="exercise-status" readonly value="loading...">Status</vscode-text-field>
+                    <vscode-checkbox id="autodone-checkbox2" title="Automatically mark the exercises as done when they compile (and pass tests), so that the next exercise will open upon success">Automatically mark exercises as done</vscode-checkbox>
                 </div>
                 <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
                 <script nonce="${nonce}" src="${scriptUri}"></script>
@@ -308,7 +291,7 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public async markAsDone() {
+    public async toggleDone() {
         const editor = vscode.window.activeTextEditor;
         if (editor === undefined) {
             return;
@@ -319,15 +302,22 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         if (document.isDirty) {
-            vscode.window.showErrorMessage('Please save your file before marking it as done');
+            vscode.window.showErrorMessage('Please save your file before marking it as done/not done');
             return;
         }
         let text = document.getText();
         let matches = text.match(this.iAmNotDoneRegex);
         if (matches === null) {
-            vscode.window.showInformationMessage('This file is already marked as done');
+            // Document is marked as done, so mark it as not done by adding the
+            // comment at the top.
+            await editor.edit((editBuilder) => {
+                editBuilder.insert(new vscode.Position(0, 0), '// I AM NOT DONE\n');
+            });
+            await document.save();
             return;
         }
+        // Document is marked as not done, so mark it as done by removing the
+        // markers.
         while (matches !== null) {
             const start = text.indexOf(matches[0]);
             const deleteRange = new vscode.Range(
@@ -351,6 +341,24 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
             this._watchTerminal = vscode.window.createTerminal('Rustlings Watch', 'rustlings', ['watch']);
         }
         this._watchTerminal.show();
+    }
+
+    public terminalClosed(terminal: vscode.Terminal) {
+        if (terminal !== this._watchTerminal) {
+            return;
+        }
+        this._watchTerminal = undefined;
+    }
+
+    public activeTerminalChanged(terminal: vscode.Terminal | undefined) {
+        const watching = terminal !== undefined
+            && terminal === this._watchTerminal;
+        console.log('watching: ', watching);
+        vscode.commands.executeCommand(
+            'setContext',
+            'rustlings-helper:watching',
+            watching
+        );
     }
 
     public exerciseInfo(uri: Uri): Exercise | undefined {
@@ -466,8 +474,8 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
         // Check that it compiles
         const folder = exercise.rootFolder;
         child_process.exec('rustlings run ' + exercise.name, { cwd: folder.uri.fsPath }, (error, stdout, stderr) => {
-            console.log('stdout: ', stdout);
-            console.log('stderr: ', stderr);
+            // console.log('stdout: ', stdout);
+            // console.log('stderr: ', stderr);
             let status;
             if (error) {
                 status = ExerciseStatus.inProgress;
@@ -496,7 +504,7 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
                 case ExerciseStatus.success:
                     statusMessage = 'Compiles/passes tests but not marked as Done';
                     if (this._autoDone) {
-                        this.markAsDone();
+                        this.toggleDone();
                     }
                     break;
                 case ExerciseStatus.done:
@@ -511,7 +519,7 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
                 status: statusMessage
             });
             if (status === ExerciseStatus.success && this._autoDone) {
-                this.markAsDone();
+                this.toggleDone();
             } else if (status === ExerciseStatus.done && !keepOpen) {
                 vscode.window.showInformationMessage('You finished ' + exercise.name + '!');
                 vscode.commands.executeCommand('workbench.action.closeActiveEditor')
