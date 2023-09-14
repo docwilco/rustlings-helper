@@ -5,7 +5,7 @@ import { Uri } from 'vscode';
 import * as toml from 'toml';
 import * as child_process from 'child_process';
 import * as child_process_promise from 'child-process-promise';
-import * as markdownit from 'markdown-it';
+import MarkdownIt from 'markdown-it';
 
 // import {
 //     provideVSCodeDesignSystem,
@@ -42,7 +42,7 @@ type NextExerciseReturnType = {
 
 export async function activate(context: vscode.ExtensionContext) {
 
-//    provideVSCodeDesignSystem().register(vsCodeButton());
+    //    provideVSCodeDesignSystem().register(vsCodeButton());
 
     const provider = new RustlingsHelperViewProvider(context.extensionUri);
 
@@ -142,6 +142,10 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
         private readonly _extensionUri: vscode.Uri,
     ) { }
 
+    private _getExtensionUri(webview: vscode.Webview, pathList: string[]) {
+        return webview.asWebviewUri(Uri.joinPath(this._extensionUri, ...pathList));
+    }
+
     async getExercises(folder: vscode.WorkspaceFolder): Promise<Exercise[]> {
         try {
             // Check if info.toml exists and contains exercises
@@ -164,7 +168,7 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
                 return [];
             }
             return info.exercises.map((exercise: any): Exercise => {
-                const markdown = markdownit({ linkify: true });
+                const markdown = MarkdownIt({ linkify: true });
                 const hint = markdown.render(exercise.hint);
                 const readmeUri = Uri.joinPath(folder.uri, exercise.path, 'README.md');
                 return {
@@ -208,9 +212,11 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.options = {
             // Allow scripts in the webview
             enableScripts: true,
-            // Only allow the webview to access resources in our extension's view directory
+            // Only allow the webview to access resources in our extension's
+            // view directory, as well as the compiled JS            
             localResourceRoots: [
                 vscode.Uri.joinPath(this._extensionUri, 'view'),
+                vscode.Uri.joinPath(this._extensionUri, 'out'),
             ]
         };
 
@@ -242,8 +248,9 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtmlForWebview(webview: vscode.Webview): string {
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'view', 'main.js'));
-        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'view', 'main.css'));
+        const scriptUri = this._getExtensionUri(webview, ['view', 'main.js']);
+        const styleUri = this._getExtensionUri(webview, ['view', 'main.css']);
+        const webviewUri = this._getExtensionUri(webview, ['out', 'webview.js']);
 
         const nonce = generateNonce();
 
@@ -274,14 +281,28 @@ class RustlingsHelperViewProvider implements vscode.WebviewViewProvider {
                     <button id="hint-button">Show Hint</button><br>
                     <button id="done-button">Mark as Done</button><br>
                 </div>
+                <div id="new-root">
+                    <vscode-text-field readonly value="loading...">Exercise</vscode-text-field>
+                    <vscode-text-field readonly value="loading...">Status</vscode-text-field>
+                    <vscode-checkbox id="autodone-checkbox2" title="Automatically mark the file as done when it compiles/passes tests, so that the next exercise will open upon success">Automatically mark as done</vscode-checkbox>
+                    <vscode-button id="watch-button2" title="Run the \`rustlings watch\` command in a terminal">Watch</vscode-button>
+                </div>
+                <script type="module" nonce="${nonce}" src="${webviewUri}"></script>
                 <script nonce="${nonce}" src="${scriptUri}"></script>
             </body>
             </html>`;
     }
 
-    public async checkActiveEditor(editor: vscode.TextEditor | undefined, keepOpen: boolean = false) {
+    public async checkActiveEditor(
+        editor: vscode.TextEditor | undefined,
+        keepOpen: boolean = false
+    ) {
         const exercise = editor ? this.exerciseInfo(editor.document.uri) : undefined;
-        vscode.commands.executeCommand('setContext', 'rustlings-helper:exerciseOpen', exercise !== undefined);
+        vscode.commands.executeCommand(
+            'setContext',
+            'rustlings-helper:exerciseOpen',
+            exercise !== undefined
+        );
         if (exercise !== undefined) {
             this.checkSavedDocument(editor!.document, keepOpen);
         }
