@@ -15,9 +15,11 @@ export async function activate(context: vscode.ExtensionContext) {
     const provider = new RustlingsExercisesProvider();
     context.subscriptions.push(provider);
 
-    context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('rustlingsHelper.exercisesView', provider)
-    );
+    const treeView = vscode.window.createTreeView('rustlingsHelper.exercisesView', {
+        treeDataProvider: provider,
+        manageCheckboxStateManually: true,
+    });
+    context.subscriptions.push(treeView);
 
     // call updateRustlingsFolders() when the workspace folders change
     context.subscriptions.push(

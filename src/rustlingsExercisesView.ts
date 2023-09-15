@@ -4,12 +4,12 @@ import * as toml from 'toml';
 import MarkdownIt from 'markdown-it';
 import * as child_process from 'child_process';
 import * as child_process_promise from 'child-process-promise';
+import { assert } from 'console';
 
 enum ExerciseStatus {
     checking,
     inProgress,
-    success,
-    done
+    success
 }
 
 type Exercise = {
@@ -18,27 +18,82 @@ type Exercise = {
     mode: string,
     hintHtml: string,
     status: ExerciseStatus,
+    done: boolean,
     uri: Uri,
     rootFolder: vscode.WorkspaceFolder,
-};
-
-enum NextExerciseStatus {
-    none,
-    error,
-    found
-}
-
-type NextExerciseReturnType = {
-    status: NextExerciseStatus,
-    nextExercise: Exercise | undefined,
-    uri: Uri | undefined
 };
 
 type RustlingsFolder = {
     folder: vscode.WorkspaceFolder,
     exercises: Exercise[],
-    exercisesMap: Map<string, Exercise>
+    exercisesMap: Map<string, Exercise>,
+    exercisesTree: ExerciseTree,
 };
+
+class ExerciseTreeLeaf extends vscode.TreeItem {
+    constructor(
+        public readonly pathElement: string,
+        public readonly exercise: Exercise,
+    ) {
+        super(exercise.name);
+    }
+}
+
+class ExerciseTreeBranch extends vscode.TreeItem {
+    children: (ExerciseTreeBranch | ExerciseTreeLeaf)[] = [];
+
+    constructor(
+        public readonly pathElement: string,
+        label?: string
+    ) {
+        assert(pathElement.endsWith('/'));
+        super(
+            // strip trailing slash
+            label ?? pathElement.slice(0, -1),
+            vscode.TreeItemCollapsibleState.Collapsed
+        );
+    }
+
+    addExercise(pathElements: string[], exercise: Exercise) {
+        if (pathElements.length === 0) {
+            return;
+        } else if (pathElements.length === 1) {
+            this.children.push(new ExerciseTreeLeaf(pathElements[0], exercise));
+        } else {
+            let section = pathElements.shift()!;
+            let branch = this.children.find((child) => {
+                return child instanceof ExerciseTreeBranch && child.pathElement === section;
+            }) as ExerciseTreeBranch | undefined;
+            if (branch === undefined) {
+                branch = new ExerciseTreeBranch(section!);
+                this.children.push(branch);
+            }
+            branch.addExercise!(pathElements, exercise);
+        }
+    }
+}
+
+class ExerciseTree extends ExerciseTreeBranch {
+    constructor(
+        rustlingsFolderIndex: number,
+        folderName: string,
+        exercises: Exercise[]
+    ) {
+        super(rustlingsFolderIndex.toString() + '/', folderName);
+        exercises.forEach((exercise) => {
+            // Split into ['exercises/', '<section>/', '<exercise>']
+            // or ['exercises/', '<quiz>']
+            const pathElements = exercise.path.split(/(?<=\/)/);
+            // Remove the first element
+            const chop = pathElements.shift();
+            if (chop !== 'exercises/') {
+                vscode.window.showErrorMessage(`Invalid exercise path: ${exercise.path} in info.toml`);
+                return;
+            }
+            this.addExercise(pathElements, exercise);
+        });
+    }
+}
 
 export class RustlingsExercisesProvider implements vscode.TreeDataProvider<string> {
     private _onDidChangeTreeData: vscode.EventEmitter<string | undefined> = new vscode.EventEmitter<string | undefined>();
@@ -90,6 +145,7 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
                     mode: exercise.mode,
                     hintHtml: hintHtml,
                     status: ExerciseStatus.checking,
+                    done: true,
                     uri: Uri.joinPath(folder.uri, exercise.path),
                     rootFolder: folder,
                 };
@@ -111,54 +167,31 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         }
     }
 
-    private _exerciseInfo(uri: Uri): Exercise | undefined {
-        const rustlings = this._rustlingsFolders.find((rustlings) => {
-            let folder = rustlings.folder;
-            // Instead of checking whether everything is the same, construct a URI
-            // with the same path as the document, using the folder's URI. Then
-            // compare the two URIs in string form. This is necessary because there
-            // are private fields that might differ because they're caches.
-            const pathIntoFolderUri = folder.uri.with({ path: uri.path });
-            return uri.path.startsWith(folder.uri.path) && (pathIntoFolderUri.toString() === uri.toString());
-        });
-        if (rustlings === undefined) {
-            return undefined;
-        }
-        const exercise = rustlings.exercises.find((exercise) => {
-            // We already know that everything else matches, so just check the path.
-            return uri.path === exercise.uri.path;
-        });
-        // Can be undefined
-        return exercise;
+    private _exerciseByUri(uri: Uri): Exercise | undefined {
+        return this._rustlingsFolders
+            .map((rustlings) => rustlings.exercisesMap.get(uri.toString()))
+            .find((exercise) => exercise !== undefined);
     }
 
-    public async getNextExercise(): Promise<NextExerciseReturnType> {
-        const rustlings = this._rustlingsFolders[0];
+
+    public getNextExercise(currentExercise?: Exercise): Exercise | undefined {
+        let rustlings;
+        if (currentExercise === undefined) {
+            const currentUri = vscode.window.activeTextEditor?.document.uri;
+            if (currentUri !== undefined) {
+                currentExercise = this._exerciseByUri(currentUri);
+            }
+        }
+        if (currentExercise !== undefined) {
+            rustlings = this._rustlingsFolders.find((folder) => folder.folder === currentExercise!.rootFolder);
+        }
+        if (rustlings === undefined) {
+            rustlings = this._rustlingsFolders[0];
+        }
         const folder = rustlings.folder;
-        const command = 'rustlings list --names --unsolved';
-        const list = await child_process_promise.exec(command, { cwd: folder.uri.fsPath });
-        if (list.childProcess.exitCode !== 0) {
-            vscode.window.showErrorMessage('Could not get next exercise!\n`'
-                + command + '` exited with code ' + list.childProcess.exitCode + '\n'
-                + 'stdout: ' + list.stdout + '\nstderr: ' + list.stderr);
-            return { status: NextExerciseStatus.error, nextExercise: undefined, uri: undefined };
-        }
-        const nextExerciseName = list.stdout.split('\n')[0];
-        if (nextExerciseName.startsWith('Progress: You completed')) {
-            vscode.commands.executeCommand('setContext', 'rustlings-helper:allDone', true);
-            return { status: NextExerciseStatus.none, nextExercise: undefined, uri: undefined };
-        }
-        vscode.commands.executeCommand('setContext', 'rustlings-helper:allDone', false);
-        const nextExercise = rustlings.exercises.find((exercise) => exercise.name === nextExerciseName);
-        if (nextExercise === undefined) {
-            vscode.window.showErrorMessage(`Could not find '${nextExerciseName}' in exercises`);
-            return { status: NextExerciseStatus.error, nextExercise: undefined, uri: undefined };
-        }
-        return {
-            status: NextExerciseStatus.found,
-            nextExercise: nextExercise,
-            uri: Uri.joinPath(folder.uri, nextExercise.path)
-        };
+        return rustlings.exercises.find(
+            (exercise) => !exercise.done || !(exercise.status === ExerciseStatus.success)
+        );
     }
 
     async updateRustlingsFolders() {
@@ -174,12 +207,28 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
             });
             this._rustlingsFolders = (await Promise.all(foldersPromises))
                 .filter((folder) => folder.exercises.length > 0)
-                .map((folder) => {
+                .map((folder, index): RustlingsFolder => {
                     let exercisesMap = new Map<string, Exercise>();
                     folder.exercises.forEach((exercise) => {
-                        exercisesMap.set(exercise.name, exercise);
+                        // // Allow lookup through multiple keys
+                        // // By their nature they do not overlap
+                        // exercisesMap.set(exercise.name, exercise);
+                        // exercisesMap.set(exercise.path, exercise);
+                        exercisesMap.set(exercise.uri.toString(), exercise);
+                        const partialTreePath = exercise.path.split('/').slice(1).join('/');
+                        exercisesMap.set(partialTreePath, exercise);
                     });
-                    return { folder: folder.folder, exercises: folder.exercises, exercisesMap: exercisesMap };
+                    const exercisesTree = new ExerciseTree(
+                        index,
+                        folder.folder.name,
+                        folder.exercises
+                    );
+                    return {
+                        folder: folder.folder,
+                        exercises: folder.exercises,
+                        exercisesMap: exercisesMap,
+                        exercisesTree: exercisesTree,
+                    };
                 });
         }
         vscode.commands.executeCommand('setContext', 'rustlings-helper:hasRustlings', this._rustlingsFolders.length > 0);
@@ -313,8 +362,8 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         if (isNaN(rustlingsFolderIndex) || rustlingsFolderIndex >= this._rustlingsFolders.length) {
             return new vscode.TreeItem("error?!", undefined);
         }
-        const rustlingsFolder = this._rustlingsFolders[rustlingsFolderIndex];
         if (path.endsWith('/')) {
+            const rustlingsFolder = this._rustlingsFolders[rustlingsFolderIndex];
             // If it's `<index>/<section>/`, just use `<section>`
             // pathElements can only be ['<section>'] or [] here because we
             // shift()ed above.            
@@ -326,9 +375,27 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         }
         // pathElements can only be ['<section>', '<exercise>'] or ['<exersize>']
         // right now
-        const exercisePath = 'exercises/' + pathElements.join('/');
-        const exercise = rustlingsFolder.exercises.find((exercise) => exercise.path === exercisePath);
-        return new vscode.TreeItem(exercise!.name);
+        const partialTreePath = pathElements.join('/');
+        const exercise = this._exerciseByKey(rustlingsFolderIndex, partialTreePath);
+        const treeItem = new vscode.TreeItem(exercise!.name);
+        treeItem.command = {
+            command: 'vscode.open',
+            arguments: [exercise!.uri],
+            title: 'Open Exercise'
+        };
+        switch (exercise!.status) {
+            case ExerciseStatus.checking:
+                treeItem.iconPath = new vscode.ThemeIcon('loading~spin');
+                break;
+            case ExerciseStatus.inProgress:
+                treeItem.iconPath = new vscode.ThemeIcon('warning');
+                break;
+            case ExerciseStatus.success:
+                treeItem.iconPath = new vscode.ThemeIcon('thumbsup');
+                break;
+        }
+        treeItem.checkboxState = exercise!.done ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
+        return treeItem;
     }
 
     rustlingsWatch() {
@@ -369,37 +436,49 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         );
     }
 
-    public async openNextExercise() {
-        const nextExercise = await this.getNextExercise();
-        switch (nextExercise.status) {
-            case NextExerciseStatus.none:
-                vscode.window.showInformationMessage('You finished all the exercises!');
-                break;
-            case NextExerciseStatus.error:
-                break;
-            case NextExerciseStatus.found:
-                vscode.workspace.openTextDocument(nextExercise.uri!)
-                    .then((document) => {
-                        vscode.window.showTextDocument(document);
-                    });
-                break;
+    public async openNextExercise(currentExercise?: Exercise) {
+        const nextExercise = await this.getNextExercise(currentExercise);
+        if (nextExercise === undefined) {
+            vscode.window.showInformationMessage('You finished all the exercises!');
+        } else {
+            vscode.commands.executeCommand('vscode.open', nextExercise.uri);
         }
     }
 
     public async openExercise() {
-        const rustlings = this._rustlingsFolders[0];
+        const showRoot = this._rustlingsFolders.length > 1;
         // show picker with all exercises
         class ExercisePickerItem implements vscode.QuickPickItem {
-            public readonly label: string = this.exercise.path.replace(/exercises\//, '');
-            public readonly description: string = this.exercise.name;
-            constructor(public readonly exercise: Exercise) { }
+            public readonly label: string;
+            public readonly description: string | undefined = undefined;
+            constructor(public readonly exercise: Exercise) {
+                this.label = this.exercise.path.replace(/exercises\//, '');
+                if (this.exercise.done) {
+                    this.label = '$(check) ' + this.label;
+                }
+                switch (this.exercise.status) {
+                    case ExerciseStatus.checking:
+                        this.label = '$(loading~spin) ' + this.label;
+                        break;
+                    case ExerciseStatus.inProgress:
+                        this.label = '$(warning) ' + this.label;
+                        break;
+                    case ExerciseStatus.success:
+                        this.label = '$(thumbsup) ' + this.label;
+                        break;
+                }
+                if (showRoot) {
+                    this.description = exercise.rootFolder.uri.toString();
+                }
+            }
             // TODO: show status in detail field
-            // Would require checking the status of each exercise, which is
-            // too slow to do here, so needs to be done at extension startup
-            // and then tracked throughout.
         }
 
-        const pickItems = rustlings.exercises.map((exercise) => new ExercisePickerItem(exercise));
+        const pickItems = this._rustlingsFolders.flatMap(
+            (folder) => folder.exercises.map(
+                (exercise) => new ExercisePickerItem(exercise)
+            )
+        );
         const picked = await vscode.window.showQuickPick(pickItems);
         if (picked === undefined) {
             return;
@@ -409,57 +488,52 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
             vscode.window.showErrorMessage(`Could not find '${picked}' in exercises`);
             return;
         }
-        const document = await vscode.workspace.openTextDocument(exercise.uri);
-        vscode.window.showTextDocument(document);
+        vscode.commands.executeCommand('vscode.open', exercise.uri);
     }
 
     public async checkSavedDocument(document: vscode.TextDocument, keepOpen: boolean = false) {
-        const exercise = this._exerciseInfo(document.uri);
+        const exercise = this._exerciseByUri(document.uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
             return;
         }
         const activeEditor = vscode.window.activeTextEditor;
-        let status = ExerciseStatus.checking;
+        exercise.status = ExerciseStatus.checking;
         // TODO: update status so it's visible in the tree view
         const text = document.getText();
-        const exerciseMarkedDone = text.match(this.iAmNotDoneRegex) === null;
+        exercise.done = text.match(this.iAmNotDoneRegex) === null;
         // Check that it compiles
         const folder = exercise.rootFolder;
         child_process.exec('rustlings run ' + exercise.name, { cwd: folder.uri.fsPath }, (error, stdout, stderr) => {
             // console.log('stdout: ', stdout);
             // console.log('stderr: ', stderr);
-            let status;
             if (error) {
-                status = ExerciseStatus.inProgress;
-            } else if (exerciseMarkedDone) {
-                status = ExerciseStatus.done;
+                exercise.status = ExerciseStatus.inProgress;
             } else {
-                status = ExerciseStatus.success;
+                exercise.status = ExerciseStatus.success;
             }
-            // 
-            if (status !== ExerciseStatus.done) {
+            if (!exercise.done) {
                 vscode.commands.executeCommand('setContext', 'rustlings-helper:allDone', false);
             }
+            // TODO: send status to treeview
+
             // If the active editor changed while we were running, don't do
             // anything. We don't want to automatically mark as Done if the
             // user isn't looking at the file when saving. Neither do we want
-            // to close and open the next exercise. And of course, don't update
-            // the webview.
+            // to close and open the next exercise.
             if (vscode.window.activeTextEditor !== activeEditor) {
                 return;
             }
-            // TODO: send status to treeview
-            // Send this before doing anything else, to avoid sending these
-            // out of order. Very unlikely, but doesn't hurt to be safe.
-            if (status === ExerciseStatus.success && this._autoDone) {
-                this.toggleDone();
-            } else if (status === ExerciseStatus.done && !keepOpen) {
-                vscode.window.showInformationMessage('You finished ' + exercise.name + '!');
-                vscode.commands.executeCommand('workbench.action.closeActiveEditor')
-                    .then(() => {
-                        this.openNextExercise();
-                    });
+            if (exercise.status === ExerciseStatus.success) {
+                if (!exercise.done && this._autoDone) {
+                    this.toggleDone();
+                } else if (!keepOpen) {
+                    vscode.window.showInformationMessage('You finished ' + exercise.name + '!');
+                    vscode.commands.executeCommand('workbench.action.closeActiveEditor')
+                        .then(() => {
+                            this.openNextExercise(exercise);
+                        });
+                }
             }
         });
     }
@@ -468,7 +542,7 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         editor: vscode.TextEditor | undefined,
         keepOpen: boolean = false
     ) {
-        const exercise = editor ? this._exerciseInfo(editor.document.uri) : undefined;
+        const exercise = editor ? this._exerciseByUri(editor.document.uri) : undefined;
         vscode.commands.executeCommand(
             'setContext',
             'rustlings-helper:exerciseOpen',
@@ -485,7 +559,7 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
             return;
         }
         const document = editor.document;
-        if (!this._exerciseInfo(document.uri)) {
+        if (!this._exerciseByUri(document.uri)) {
             vscode.window.showErrorMessage('This file is not part of a rustlings exercise');
             return;
         }
@@ -533,10 +607,7 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         }
         const documentUri = document.uri;
         const readmeUri = Uri.joinPath(documentUri, '../README.md');
-        vscode.workspace.openTextDocument(readmeUri)
-            .then((document) => {
-                vscode.window.showTextDocument(document);
-            });
+        vscode.commands.executeCommand('vscode.open', readmeUri);
     }
 
 }

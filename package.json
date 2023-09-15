@@ -30,31 +30,23 @@
           "id": "rustlingsHelper.exercisesView",
           "type": "tree",
           "name": "Exercises",
-          "icon": "media/rustlings.svg",
-          "when": "rustlings-helper:hasRustlings"
-        },
-        {
-          "id": "rustlingsHelper.welcomeView",
-          "type": "tree",
-          "name": "Rustlings Helper",
-          "icon": "media/rustlings.svg",
-          "when": "!rustlings-helper:hasRustlings"
+          "icon": "media/rustlings.svg"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "rustlingsHelper.welcomeView",
+        "view": "rustlingsHelper.exercisesView",
         "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
         "when": "!rustlings-helper:hasRustlings"
       },
       {
-        "view": "rustlingsHelper.welcomeView",
+        "view": "rustlingsHelper.exercisesView",
         "contents": "No exercise open. Please open an exercise.\n[Open Next Exercise](command:rustlings-helper.openNextExercise)\n",
         "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen && !rustlings-helper:allDone"
       },
       {
-        "view": "rustlingsHelper.welcomeView",
+        "view": "rustlingsHelper.exercisesView",
         "contents": "Congratulations! You have completed all exercises.\nYou can still go back and play with the exercises.\n[Open Exercise](command:rustlings-helper.openExercise)\n",
         "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen && rustlings-helper:allDone"
       }
@@ -113,7 +105,7 @@
       "view/title": [
         {
           "command": "rustlings-helper.watch",
-          "when": "(view == rustlingsHelper.exercisesView || view == rustlingsHelper.welcomeView) && rustlings-helper:hasRustlings && !rustlings-helper:watching",
+          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:hasRustlings && !rustlings-helper:watching",
           "group": "navigation"
         },
         {
@@ -128,7 +120,7 @@
         },
         {
           "command": "rustlings-helper.readme",
-          "when": "rustlings-helper:exerciseOpen",
+          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:exerciseOpen",
           "group": "navigation"
         }
       ]
