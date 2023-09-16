@@ -32,6 +32,16 @@ export async function activate(context: vscode.ExtensionContext) {
     // do it after registering the event handler so that there's no race condition.
     await provider.updateRustlingsFolders();
 
+    const watcher = vscode.workspace.createFileSystemWatcher(
+        '**/exercises/**/*.rs'
+    );
+    context.subscriptions.push(watcher);
+    context.subscriptions.push(
+        watcher.onDidChange((uri) => {
+            provider.fileChanged(uri);
+        })
+    );
+
     // Setup events for Watch Terminal
     context.subscriptions.push(
         vscode.window.onDidCloseTerminal((terminal) => {
@@ -51,12 +61,6 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => {
             provider.checkActiveEditor(editor, true);
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.workspace.onDidSaveTextDocument((document) => {
-            provider.checkSavedDocument(document);
         })
     );
 

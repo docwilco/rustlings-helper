@@ -169,6 +169,12 @@ class ExerciseTreeLeaf extends vscode.TreeItem {
         }
         this.parent.update(eventEmitter);
     }
+
+    public markDone(provider: RustlingsExercisesProvider, done: boolean) {
+        if (done === this.done) {
+            return;
+        }
+    }
 }
 
 class ExerciseTreeBranch extends vscode.TreeItem {
@@ -251,6 +257,12 @@ class ExerciseTreeBranch extends vscode.TreeItem {
         }
         this.parent?.update(eventEmitter);
     }
+
+    public markDone(provider: RustlingsExercisesProvider, done: boolean) {
+        this.children.forEach((child) => {
+        });
+    }
+
 }
 
 class ExerciseTree extends ExerciseTreeBranch {
@@ -318,6 +330,14 @@ export class RustlingsExercisesProvider
 
     setView(treeView: vscode.TreeView<ExerciseTreeItem>) {
         this._view = treeView;
+        this._view.onDidChangeCheckboxState(
+            (event) => {
+                event.items.forEach((item) => {
+                    let [treeItem, state] = item;
+
+                });
+            }
+        );
     }
 
     private async _getExercises(
@@ -549,33 +569,48 @@ export class RustlingsExercisesProvider
         vscode.commands.executeCommand('vscode.open', exercise.uri);
     }
 
-    public async checkSavedDocument(
-        document: vscode.TextDocument, keepOpen: boolean = false
-    ) {
-        const exercise = this._exerciseByUri(document.uri);
+    private async _getFileText(uri: Uri): Promise<string> {
+        let document = vscode.workspace.textDocuments.find(
+            (document) => document.uri.toString() === uri.toString()
+        );
+        if (document !== undefined) {
+            return document.getText();
+        }
+        const fileBytes = await vscode.workspace.fs.readFile(uri);
+        const buffer = Buffer.from(fileBytes);
+        return buffer.toString();
+    }
+
+    public async fileChanged(uri: Uri): Promise<Exercise | undefined> {
+        console.log('fileChanged', uri.toString());
+        const exercise = this._exerciseByUri(uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
             return;
         }
-        const activeEditor = vscode.window.activeTextEditor;
-        const text = document.getText();
-        exercise.done = text.match(this.iAmNotDoneRegex) === null;
         exercise.success = undefined;
+        exercise.done = undefined;
         exercise.treeItem?.update(this._onDidChangeTreeData);
-
-        const success = await runExercise(exercise, this._onDidChangeTreeData);
-
-        // If the active editor changed while we were running, don't do
-        // anything. We don't want to automatically mark as Done if the
-        // user isn't looking at the file when saving. Neither do we want
-        // to close and open the next exercise.
-        if (vscode.window.activeTextEditor !== activeEditor) {
+        // Hoping that this actually doesn't block the event loop
+        const text = await this._getFileText(uri);
+        exercise.done = text.match(this.iAmNotDoneRegex) === null;
+        exercise.treeItem?.update(this._onDidChangeTreeData);
+        // Allow the view to update before we check the file
+        //        setTimeout(async () => {
+        const success = await runExercise(
+            exercise,
+            this._onDidChangeTreeData
+        );
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!(activeEditor?.document.uri.toString() === uri.toString())) {
+            // If the active editor isn't looking at the file that changed,
+            // don't do anything else.
             return;
         }
         if (success) {
             if (!exercise.done && this._autoDone) {
                 this.toggleDone();
-            } else if (!keepOpen) {
+            } else if (exercise.done) {
                 vscode.window.showInformationMessage(
                     'You finished ' + exercise.name + '!'
                 );
@@ -585,6 +620,7 @@ export class RustlingsExercisesProvider
                 this.openNextExercise(exercise);
             }
         }
+        //        });
     }
 
     public async checkActiveEditor(
@@ -601,8 +637,12 @@ export class RustlingsExercisesProvider
         );
         if (exercise !== undefined) {
             this._view?.reveal(exercise.treeItem!, { select: true });
-            this.checkSavedDocument(editor!.document, keepOpen);
+            runExercise(exercise, this._onDidChangeTreeData);
         }
+    }
+
+    public async markDone(uri: Uri) {
+
     }
 
     public async toggleDone() {
