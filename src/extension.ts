@@ -20,6 +20,7 @@ export async function activate(context: vscode.ExtensionContext) {
         manageCheckboxStateManually: true,
     });
     context.subscriptions.push(treeView);
+    provider.setView(treeView);
 
     // call updateRustlingsFolders() when the workspace folders change
     context.subscriptions.push(

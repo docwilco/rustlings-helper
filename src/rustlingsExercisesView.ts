@@ -2,84 +2,265 @@ import * as vscode from 'vscode';
 import { Uri } from 'vscode';
 import * as toml from 'toml';
 import MarkdownIt from 'markdown-it';
-import * as child_process from 'child_process';
 import * as child_process_promise from 'child-process-promise';
 import { assert } from 'console';
-
-enum ExerciseStatus {
-    checking,
-    inProgress,
-    success
-}
 
 type Exercise = {
     name: string,
     path: string,
     mode: string,
     hintHtml: string,
-    status: ExerciseStatus,
-    done: boolean,
+    // For these two, undefined means we don't know yet
+    success?: boolean,
+    done?: boolean,
     uri: Uri,
     rootFolder: vscode.WorkspaceFolder,
+    treeItem?: ExerciseTreeLeaf;
 };
 
-type RustlingsFolder = {
-    folder: vscode.WorkspaceFolder,
-    exercises: Exercise[],
-    exercisesMap: Map<string, Exercise>,
-    exercisesTree: ExerciseTree,
+class RustlingsFolder {
+    public readonly exercisesMap: Map<string, Exercise>;
+    public readonly exercisesTree: ExerciseTree;
+    constructor(
+        private _view: vscode.TreeView<ExerciseTreeItem>,
+        public readonly folder: vscode.WorkspaceFolder,
+        public readonly exercises: Exercise[]
+    ) {
+        this.exercisesMap = new Map<string, Exercise>();
+        exercises.forEach((exercise) => {
+            // Map on multiple types of keys
+            this.exercisesMap.set(exercise.uri.toString(), exercise);
+            this.exercisesMap.set(exercise.name, exercise);
+            this.exercisesMap.set(exercise.path, exercise);
+        });
+        this.exercisesTree = new ExerciseTree(
+            this._view,
+            folder.name,
+            exercises
+        );
+    }
+
+    public async checkStatus(
+        eventEmitter: vscode.EventEmitter<ExerciseTreeItem | undefined>
+    ) {
+        // Use setTimeout() to fire this off in the background, as exec()
+        // doesn't seem to return until the command is done.
+        setTimeout(async () => {
+            const listDoneCommand = 'rustlings list --paths --solved';
+            const result = await child_process_promise.exec(
+                listDoneCommand,
+                { cwd: this.folder.uri.fsPath }
+            );
+            if (result.childProcess.exitCode !== 0) {
+                vscode.window.showErrorMessage(
+                    `Failed to run "${listDoneCommand}": ${result.stderr}`
+                );
+                return;
+            }
+            const done = new Set(
+                result.stdout.split('\n')
+                    .map((line) => line.trim())
+                    .filter(
+                        (line) => line !== '' && !line.startsWith('Progress: ')
+                    )
+            );
+            this.exercises.forEach((exercise) => {
+                exercise.done = done.has(exercise.path);
+                if (exercise.treeItem !== undefined) {
+                    exercise.treeItem.update(eventEmitter);
+                }
+            });
+        }, 1000);
+        // Above is 1 second, because with less the TreeView doesn't update
+        // until after the closure is done.
+
+        setTimeout(async () => {
+            const exercises = [...this.exercises];
+            setTimeout(async function checkRunExercise() {
+                const exercise = exercises.shift();
+                if (exercise === undefined) {
+                    return;
+                }
+                // Other events can have already updated this exercise, so
+                // check if we need to run it.
+                if (exercise.success === undefined) {
+                    await runExercise(exercise, eventEmitter);
+                }
+                // We want to postpone to the next eventloop here now so that
+                // the UI can update
+                setTimeout(checkRunExercise);
+            });
+        }, 1000); // Again 1 second so updates happen
+    }
 };
+
+function iconForSuccessState(success?: boolean): vscode.ThemeIcon {
+    switch (success) {
+        case true:
+            return new vscode.ThemeIcon('thumbsup');
+        case false:
+            return new vscode.ThemeIcon('warning');
+        case undefined:
+            return new vscode.ThemeIcon('loading~spin');
+    }
+}
+
+function checkboxStateForDoneState(
+    done?: boolean
+): vscode.TreeItemCheckboxState | undefined {
+    switch (done) {
+        case true:
+            return vscode.TreeItemCheckboxState.Checked;
+        case false:
+            return vscode.TreeItemCheckboxState.Unchecked;
+        case undefined:
+            return undefined;
+    }
+}
+
+async function runExercise(
+    exercise: Exercise,
+    eventEmitter?: vscode.EventEmitter<ExerciseTreeItem | undefined>
+): Promise<boolean> {
+    const cwd = exercise.rootFolder.uri.fsPath;
+    const command = 'rustlings run ' + exercise.name;
+    try {
+        const result = await child_process_promise.exec(command, { cwd: cwd });
+        exercise.success = true;
+    } catch (error) {
+        exercise.success = false;
+    }
+    exercise.treeItem?.update(eventEmitter);
+    return exercise.success;
+}
 
 class ExerciseTreeLeaf extends vscode.TreeItem {
+    success?: boolean;
+    done?: boolean;
     constructor(
+        public readonly parent: ExerciseTreeBranch,
         public readonly pathElement: string,
         public readonly exercise: Exercise,
     ) {
         super(exercise.name);
+        exercise.treeItem = this;
+        this.success = exercise.success;
+        this.done = exercise.done;
+        this.command = {
+            command: 'vscode.open',
+            title: 'Open Exercise',
+            arguments: [exercise.uri]
+        };
+        this.update();
+    }
+
+    public update(
+        eventEmitter?: vscode.EventEmitter<ExerciseTreeItem | undefined>
+    ) {
+        const oldIconPath = this.iconPath;
+        const oldCheckboxState = this.checkboxState;
+        this.iconPath = iconForSuccessState(this.exercise.success);
+        this.checkboxState = checkboxStateForDoneState(this.exercise.done);
+        this.success = this.exercise.success;
+        this.done = this.exercise.done;
+        if (oldIconPath !== this.iconPath
+            || oldCheckboxState !== this.checkboxState) {
+            eventEmitter?.fire(this);
+        }
+        this.parent.update(eventEmitter);
     }
 }
 
 class ExerciseTreeBranch extends vscode.TreeItem {
     children: (ExerciseTreeBranch | ExerciseTreeLeaf)[] = [];
-
+    success?: boolean;
+    done?: boolean;
     constructor(
-        public readonly pathElement: string,
+        public readonly parent: ExerciseTreeBranch | undefined,
+        public readonly pathElement: string | undefined,
         label?: string
     ) {
-        assert(pathElement.endsWith('/'));
+        if (pathElement === undefined) {
+            pathElement = '';
+        }
         super(
             // strip trailing slash
-            label ?? pathElement.slice(0, -1),
+            label ?? pathElement?.slice(0, -1),
             vscode.TreeItemCollapsibleState.Collapsed
         );
+        this.iconPath = new vscode.ThemeIcon('folder');
     }
 
     addExercise(pathElements: string[], exercise: Exercise) {
         if (pathElements.length === 0) {
             return;
         } else if (pathElements.length === 1) {
-            this.children.push(new ExerciseTreeLeaf(pathElements[0], exercise));
+            this.children.push(
+                new ExerciseTreeLeaf(this, pathElements[0], exercise)
+            );
         } else {
             let section = pathElements.shift()!;
             let branch = this.children.find((child) => {
-                return child instanceof ExerciseTreeBranch && child.pathElement === section;
+                return child instanceof ExerciseTreeBranch
+                    && child.pathElement === section;
             }) as ExerciseTreeBranch | undefined;
             if (branch === undefined) {
-                branch = new ExerciseTreeBranch(section!);
+                branch = new ExerciseTreeBranch(this, section!);
                 this.children.push(branch);
             }
             branch.addExercise!(pathElements, exercise);
         }
     }
+
+    protected checkChildren() {
+        // If any children aren't success, this will be overridden
+        // Use a temporary value, so we don't incorrectly set this.success
+        let success: boolean | undefined = true;
+        this.children.find((child) => {
+            if (child.success !== true) {
+                success = child.success;
+                return true;
+            }
+            return false;
+        });
+        this.success = success;
+        // If any children aren't done, this will be overridden
+        // Use a temporary value, so we don't incorrectly set this.done
+        let done: boolean | undefined = true;
+        this.children.find((child) => {
+            if (child.done !== true) {
+                done = child.done;
+                return true;
+            }
+            return false;
+        });
+        this.done = done;
+    }
+
+    public update(
+        eventEmitter?: vscode.EventEmitter<ExerciseTreeItem | undefined>
+    ) {
+        this.checkChildren();
+        const oldIconPath = this.iconPath;
+        const oldCheckboxState = this.checkboxState;
+        this.iconPath = iconForSuccessState(this.success);
+        this.checkboxState = checkboxStateForDoneState(this.done);
+        if (oldIconPath !== this.iconPath
+            || oldCheckboxState !== this.checkboxState) {
+            eventEmitter?.fire(this);
+        }
+        this.parent?.update(eventEmitter);
+    }
 }
 
 class ExerciseTree extends ExerciseTreeBranch {
     constructor(
-        rustlingsFolderIndex: number,
+        private _treeView: vscode.TreeView<ExerciseTreeItem>,
         folderName: string,
         exercises: Exercise[]
     ) {
-        super(rustlingsFolderIndex.toString() + '/', folderName);
+        super(undefined, undefined, folderName);
+        this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
         exercises.forEach((exercise) => {
             // Split into ['exercises/', '<section>/', '<exercise>']
             // or ['exercises/', '<quiz>']
@@ -87,17 +268,37 @@ class ExerciseTree extends ExerciseTreeBranch {
             // Remove the first element
             const chop = pathElements.shift();
             if (chop !== 'exercises/') {
-                vscode.window.showErrorMessage(`Invalid exercise path: ${exercise.path} in info.toml`);
+                vscode.window.showErrorMessage(
+                    `Invalid exercise path: ${exercise.path} in info.toml`
+                );
                 return;
             }
             this.addExercise(pathElements, exercise);
         });
     }
+
+    public update(
+        eventEmitter?: vscode.EventEmitter<ExerciseTreeItem | undefined>
+    ): void {
+        this.checkChildren();
+        if (this.done && this.success) {
+            this._treeView.message = "You have finished all the exercises!";
+        } else {
+            this._treeView.message = undefined;
+        }
+    }
 }
 
-export class RustlingsExercisesProvider implements vscode.TreeDataProvider<string> {
-    private _onDidChangeTreeData: vscode.EventEmitter<string | undefined> = new vscode.EventEmitter<string | undefined>();
-    readonly onDidChangeTreeData: vscode.Event<string | undefined> = this._onDidChangeTreeData.event;
+type ExerciseTreeItem = ExerciseTreeBranch | ExerciseTreeLeaf;
+
+export class RustlingsExercisesProvider
+    implements vscode.TreeDataProvider<ExerciseTreeItem>
+{
+    private _onDidChangeTreeData =
+        new vscode.EventEmitter<ExerciseTreeItem | undefined>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+    private _view?: vscode.TreeView<ExerciseTreeItem>;
 
     private _rustlingsFolders: RustlingsFolder[] = [];
 
@@ -105,7 +306,7 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
 
     private _autoDone: boolean = false;
 
-    private readonly iAmNotDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE/m;
+    private readonly iAmNotDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE\n?/m;
 
     constructor() {
 
@@ -115,7 +316,13 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         this._onDidChangeTreeData.dispose();
     }
 
-    private async _getExercises(folder: vscode.WorkspaceFolder): Promise<Exercise[]> {
+    setView(treeView: vscode.TreeView<ExerciseTreeItem>) {
+        this._view = treeView;
+    }
+
+    private async _getExercises(
+        folder: vscode.WorkspaceFolder
+    ): Promise<Exercise[]> {
         try {
             // Check if info.toml exists and contains exercises
             const infoUri = Uri.joinPath(folder.uri, '/info.toml');
@@ -144,19 +351,21 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
                     path: exercise.path,
                     mode: exercise.mode,
                     hintHtml: hintHtml,
-                    status: ExerciseStatus.checking,
-                    done: true,
+                    success: undefined,
+                    done: undefined,
                     uri: Uri.joinPath(folder.uri, exercise.path),
                     rootFolder: folder,
                 };
             })
                 .filter((exercise: Exercise) => {
                     const pathElements = exercise.path.split('/');
-                    const length = pathElements.length;
-                    if (length < 2 || length > 3
+                    if (pathElements.length < 2
                         || pathElements[0] !== 'exercises'
                         || exercise.path.endsWith('/')) {
-                        vscode.window.showErrorMessage(`Invalid exercise path: ${exercise.path} in info.toml`);
+                        vscode.window.showErrorMessage(
+                            `Invalid exercise path: ${exercise.path} in `
+                            + `info.toml`
+                        );
                         return false;
                     }
                     return true;
@@ -174,7 +383,7 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
     }
 
 
-    public getNextExercise(currentExercise?: Exercise): Exercise | undefined {
+    private _getNextExercise(currentExercise?: Exercise): Exercise | undefined {
         let rustlings;
         if (currentExercise === undefined) {
             const currentUri = vscode.window.activeTextEditor?.document.uri;
@@ -183,14 +392,16 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
             }
         }
         if (currentExercise !== undefined) {
-            rustlings = this._rustlingsFolders.find((folder) => folder.folder === currentExercise!.rootFolder);
+            rustlings = this._rustlingsFolders.find(
+                (folder) => folder.folder === currentExercise!.rootFolder
+            );
         }
         if (rustlings === undefined) {
             rustlings = this._rustlingsFolders[0];
         }
         const folder = rustlings.folder;
         return rustlings.exercises.find(
-            (exercise) => !exercise.done || !(exercise.status === ExerciseStatus.success)
+            (exercise) => !exercise.done || !exercise.success
         );
     }
 
@@ -200,202 +411,53 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
             this._rustlingsFolders = [];
         } else {
             // Because filter() requires a synchronous function, we can't use
-            // getExercises() directly. Instead, we use map() to create an array of
-            // promises, then use Promise.all() to wait for all of them to resolve.
+            // getExercises() directly. Instead, we use map() to create an array
+            // of promises, then use Promise.all() to wait for all of them to
+            // resolve.
             let foldersPromises = workspaceFolders.map(async (folder) => {
-                return { folder: folder, exercises: await this._getExercises(folder) };
+                return {
+                    folder: folder,
+                    exercises: await this._getExercises(folder)
+                };
             });
+            assert(this._view !== undefined);
             this._rustlingsFolders = (await Promise.all(foldersPromises))
-                .filter((folder) => folder.exercises.length > 0)
-                .map((folder, index): RustlingsFolder => {
-                    let exercisesMap = new Map<string, Exercise>();
-                    folder.exercises.forEach((exercise) => {
-                        // // Allow lookup through multiple keys
-                        // // By their nature they do not overlap
-                        // exercisesMap.set(exercise.name, exercise);
-                        // exercisesMap.set(exercise.path, exercise);
-                        exercisesMap.set(exercise.uri.toString(), exercise);
-                        const partialTreePath = exercise.path.split('/').slice(1).join('/');
-                        exercisesMap.set(partialTreePath, exercise);
-                    });
-                    const exercisesTree = new ExerciseTree(
-                        index,
-                        folder.folder.name,
-                        folder.exercises
-                    );
-                    return {
-                        folder: folder.folder,
-                        exercises: folder.exercises,
-                        exercisesMap: exercisesMap,
-                        exercisesTree: exercisesTree,
-                    };
-                });
+                .filter((rustlings) => rustlings.exercises.length > 0)
+                .map((rustlings, index) =>
+                    new RustlingsFolder(
+                        this._view!,
+                        rustlings.folder,
+                        rustlings.exercises
+                    )
+                );
         }
-        vscode.commands.executeCommand('setContext', 'rustlings-helper:hasRustlings', this._rustlingsFolders.length > 0);
+        vscode.commands.executeCommand(
+            'setContext', 'rustlings-helper:hasRustlings',
+            this._rustlingsFolders.length > 0
+        );
         this._onDidChangeTreeData.fire(undefined);
+        this._rustlingsFolders.forEach(
+            (rustlings) => rustlings.checkStatus(this._onDidChangeTreeData)
+        );
     }
 
-    getChildren(path?: string): string[] | undefined {
-        console.log('getChildren: ', path);
-        if (path === undefined) {
-            switch (this._rustlingsFolders.length) {
-                case 0:
-                    return undefined;
-                case 1:
-                    // If there's only one rustlings folder, show its exercises
-                    return this.getChildren("0/");
-                default:
-                    // If there are multiple rustlings folders, show them
-                    return this._rustlingsFolders.map((folder, index) => index.toString() + '/');
-                // The above returns:
-                //   <rustlingsFolderIndex>/
-            }
+    getChildren(
+        branch?: ExerciseTreeBranch
+    ): (ExerciseTreeBranch | ExerciseTreeLeaf)[] | undefined {
+        if (branch === undefined) {
+            return this._rustlingsFolders.map(
+                (rustlings) => rustlings.exercisesTree
+            );
         }
-        const pathElements = path.split('/');
-        const rustlingsFolderIndex = parseInt(pathElements[0]);
-        if (isNaN(rustlingsFolderIndex) || rustlingsFolderIndex >= this._rustlingsFolders.length) {
-            return undefined;
-        }
-        const rustlingsFolder = this._rustlingsFolders[rustlingsFolderIndex];
-        // If we're here, path is one of the following:
-        //   <rustlingsFolderIndex>/
-        //   <rustlingsFolderIndex>/<section>/
-        //   <rustlingsFolderIndex>/<section>/<exercise>
-        //   <rustlingsFolderIndex>/<exercise>
-        // The last being for the quizzes.
-        // This should result in the following pathElements:
-        //   ['<rustlingsFolderIndex>', '']
-        //   ['<rustlingsFolderIndex>', '<section>', '']
-        //   ['<rustlingsFolderIndex>', '<section>', '<exercise>']
-        //   ['<rustlingsFolderIndex>', '<exercise>']
-        // If the path doesn't end in a slash, it's an exercise, so return
-        // empty.
-        if (!path.endsWith('/')) {
-            return [];
-        }
-        // We're here, so pop the empty element off the end
-        pathElements.pop();
-        if (pathElements.length === 1) {
-            // If there's only one element, show the sections and quizzes
-            return rustlingsFolder.exercises
-                // turn exercises/intro/1.rs into 0/intro/
-                // turn exercises/intro/quiz1.rs into 0/quiz1.rs
-                .map((exercise) => {
-                    const exercisePathElements = exercise.path.split('/');
-                    const length = exercisePathElements.length;
-                    return pathElements[0] + '/' + exercisePathElements[1]
-                        + (length === 3 ? '/' : '');
-                    // The above returns either:
-                    //   <rustlingsFolderIndex>/<section>/
-                    // or:
-                    //   <rustlingsFolderIndex>/<quiz>
-                })
-                // Sections will be repeated for each exercise in them, so
-                // remove duplicates
-                .reduce((unique: string[], path) => {
-                    if (!unique.includes(path)) {
-                        unique.push(path);
-                    }
-                    return unique;
-                }, []);
-        }
-        if (pathElements.length === 2) {
-            // If there are two elements, show the exercises in the section
-            const sectionPath = `exercises/${pathElements[1]}/`;
-            return rustlingsFolder.exercises
-                .filter((exercise) => exercise.path.startsWith(sectionPath))
-                .map((exercise) => {
-                    const exercisePathElements = exercise.path.split('/');
-                    return pathElements[0] + '/' + exercisePathElements[1]
-                        + '/' + exercisePathElements[2];
-                    // The above returns
-                    //   <rustlingsFolderIndex>/<section>/<exercise>
-                });
-        }
+        return branch.children;
     }
 
-
-    // If there is only one Rustlings folder, the possible inputs are:
-    //   <rustlingsFolderIndex>/<section>/
-    //   <rustlingsFolderIndex>/<section>/<exercise>
-    //   <rustlingsFolderIndex>/<exercise>
-    //
-    // and they should result in:
-    //   undefined (root)
-    //   <rustlingsFolderIndex>/<section>/
-    //   undefined (root)
-    // 
-    // If there are multiple Rustlings folders, the possible inputs are:
-    //   <rustlingsFolderIndex>/
-    //   <rustlingsFolderIndex>/<section>/
-    //   <rustlingsFolderIndex>/<section>/<exercise>
-    //   <rustlingsFolderIndex>/<exercise>
-    //
-    // and they should result in:
-    //   undefined (root)
-    //   <rustlingsFolderIndex>/
-    //   <rustlingsFolderIndex>/<section>/
-    //   <rustlingsFolderIndex>/
-    getParent(path: string): string | undefined {
-        // Splits `0/intro/intro1.rs` into ['0/', 'intro/', 'intro1.rs']
-        // and `0/intro/` into ['0/', 'intro/']
-        let pathElements = path.split(/(?<=\/)/);
-        // Remove the last
-        pathElements.pop();
-        // If there's only one Rustlings folder, the parent of 0/intro/ is the
-        // root, instead of 0/, so return undefined if there's only one element
-        // left
-        if (this._rustlingsFolders.length < 2 && pathElements.length === 1) {
-            return undefined;
-        }
-        if (pathElements.length === 0) {
-            // If there's nothing left, return undefined
-            return undefined;
-        }
-        // Join back together
-        return pathElements.join('');
+    getParent(item: ExerciseTreeItem): ExerciseTreeBranch | undefined {
+        return item.parent;
     }
 
-    getTreeItem(path: string): vscode.TreeItem {
-        const pathElements = path.split('/').filter((element) => element !== '');
-        const rustlingsFolderIndex = parseInt(pathElements.shift()!);
-        if (isNaN(rustlingsFolderIndex) || rustlingsFolderIndex >= this._rustlingsFolders.length) {
-            return new vscode.TreeItem("error?!", undefined);
-        }
-        if (path.endsWith('/')) {
-            const rustlingsFolder = this._rustlingsFolders[rustlingsFolderIndex];
-            // If it's `<index>/<section>/`, just use `<section>`
-            // pathElements can only be ['<section>'] or [] here because we
-            // shift()ed above.            
-            if (pathElements.length === 1) {
-                return new vscode.TreeItem(pathElements.pop()!, vscode.TreeItemCollapsibleState.Collapsed);
-            }
-            // Can only be `<index>/`, return the folder name
-            return new vscode.TreeItem(rustlingsFolder.folder.name, vscode.TreeItemCollapsibleState.Collapsed);
-        }
-        // pathElements can only be ['<section>', '<exercise>'] or ['<exersize>']
-        // right now
-        const partialTreePath = pathElements.join('/');
-        const exercise = this._exerciseByKey(rustlingsFolderIndex, partialTreePath);
-        const treeItem = new vscode.TreeItem(exercise!.name);
-        treeItem.command = {
-            command: 'vscode.open',
-            arguments: [exercise!.uri],
-            title: 'Open Exercise'
-        };
-        switch (exercise!.status) {
-            case ExerciseStatus.checking:
-                treeItem.iconPath = new vscode.ThemeIcon('loading~spin');
-                break;
-            case ExerciseStatus.inProgress:
-                treeItem.iconPath = new vscode.ThemeIcon('warning');
-                break;
-            case ExerciseStatus.success:
-                treeItem.iconPath = new vscode.ThemeIcon('thumbsup');
-                break;
-        }
-        treeItem.checkboxState = exercise!.done ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
-        return treeItem;
+    getTreeItem(item: ExerciseTreeItem): vscode.TreeItem {
+        return item;
     }
 
     rustlingsWatch() {
@@ -404,7 +466,9 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         }
         // TODO: support multiple folders for Watch
         const cwd = this._rustlingsFolders[0].folder.uri.fsPath;
-        if (this._watchTerminal === undefined || this._watchTerminal.exitStatus !== undefined) {
+        if (this._watchTerminal === undefined
+            || this._watchTerminal.exitStatus !== undefined
+        ) {
             if (this._watchTerminal?.exitStatus) {
                 this._watchTerminal.dispose();
             }
@@ -428,7 +492,6 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
     activeTerminalChanged(terminal: vscode.Terminal | undefined) {
         const watching = terminal !== undefined
             && terminal === this._watchTerminal;
-        console.log('watching: ', watching);
         vscode.commands.executeCommand(
             'setContext',
             'rustlings-helper:watching',
@@ -437,9 +500,11 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
     }
 
     public async openNextExercise(currentExercise?: Exercise) {
-        const nextExercise = await this.getNextExercise(currentExercise);
+        const nextExercise = await this._getNextExercise(currentExercise);
         if (nextExercise === undefined) {
-            vscode.window.showInformationMessage('You finished all the exercises!');
+            vscode.window.showInformationMessage(
+                'You finished all the exercises!'
+            );
         } else {
             vscode.commands.executeCommand('vscode.open', nextExercise.uri);
         }
@@ -456,17 +521,8 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
                 if (this.exercise.done) {
                     this.label = '$(check) ' + this.label;
                 }
-                switch (this.exercise.status) {
-                    case ExerciseStatus.checking:
-                        this.label = '$(loading~spin) ' + this.label;
-                        break;
-                    case ExerciseStatus.inProgress:
-                        this.label = '$(warning) ' + this.label;
-                        break;
-                    case ExerciseStatus.success:
-                        this.label = '$(thumbsup) ' + this.label;
-                        break;
-                }
+                this.label = iconForSuccessState(this.exercise.success).id
+                    + ' ' + this.label;
                 if (showRoot) {
                     this.description = exercise.rootFolder.uri.toString();
                 }
@@ -485,70 +541,66 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         }
         const exercise = picked.exercise;
         if (exercise === undefined) {
-            vscode.window.showErrorMessage(`Could not find '${picked}' in exercises`);
+            vscode.window.showErrorMessage(
+                `Could not find '${picked}' in exercises`
+            );
             return;
         }
         vscode.commands.executeCommand('vscode.open', exercise.uri);
     }
 
-    public async checkSavedDocument(document: vscode.TextDocument, keepOpen: boolean = false) {
+    public async checkSavedDocument(
+        document: vscode.TextDocument, keepOpen: boolean = false
+    ) {
         const exercise = this._exerciseByUri(document.uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
             return;
         }
         const activeEditor = vscode.window.activeTextEditor;
-        exercise.status = ExerciseStatus.checking;
-        // TODO: update status so it's visible in the tree view
         const text = document.getText();
         exercise.done = text.match(this.iAmNotDoneRegex) === null;
-        // Check that it compiles
-        const folder = exercise.rootFolder;
-        child_process.exec('rustlings run ' + exercise.name, { cwd: folder.uri.fsPath }, (error, stdout, stderr) => {
-            // console.log('stdout: ', stdout);
-            // console.log('stderr: ', stderr);
-            if (error) {
-                exercise.status = ExerciseStatus.inProgress;
-            } else {
-                exercise.status = ExerciseStatus.success;
-            }
-            if (!exercise.done) {
-                vscode.commands.executeCommand('setContext', 'rustlings-helper:allDone', false);
-            }
-            // TODO: send status to treeview
+        exercise.success = undefined;
+        exercise.treeItem?.update(this._onDidChangeTreeData);
 
-            // If the active editor changed while we were running, don't do
-            // anything. We don't want to automatically mark as Done if the
-            // user isn't looking at the file when saving. Neither do we want
-            // to close and open the next exercise.
-            if (vscode.window.activeTextEditor !== activeEditor) {
-                return;
+        const success = await runExercise(exercise, this._onDidChangeTreeData);
+
+        // If the active editor changed while we were running, don't do
+        // anything. We don't want to automatically mark as Done if the
+        // user isn't looking at the file when saving. Neither do we want
+        // to close and open the next exercise.
+        if (vscode.window.activeTextEditor !== activeEditor) {
+            return;
+        }
+        if (success) {
+            if (!exercise.done && this._autoDone) {
+                this.toggleDone();
+            } else if (!keepOpen) {
+                vscode.window.showInformationMessage(
+                    'You finished ' + exercise.name + '!'
+                );
+                await vscode.commands.executeCommand(
+                    'workbench.action.closeActiveEditor'
+                );
+                this.openNextExercise(exercise);
             }
-            if (exercise.status === ExerciseStatus.success) {
-                if (!exercise.done && this._autoDone) {
-                    this.toggleDone();
-                } else if (!keepOpen) {
-                    vscode.window.showInformationMessage('You finished ' + exercise.name + '!');
-                    vscode.commands.executeCommand('workbench.action.closeActiveEditor')
-                        .then(() => {
-                            this.openNextExercise(exercise);
-                        });
-                }
-            }
-        });
+        }
     }
 
     public async checkActiveEditor(
         editor: vscode.TextEditor | undefined,
         keepOpen: boolean = false
     ) {
-        const exercise = editor ? this._exerciseByUri(editor.document.uri) : undefined;
+        const exercise = editor
+            ? this._exerciseByUri(editor.document.uri)
+            : undefined;
         vscode.commands.executeCommand(
             'setContext',
             'rustlings-helper:exerciseOpen',
             exercise !== undefined
         );
         if (exercise !== undefined) {
+            this._view?.reveal(exercise.treeItem!, { select: true });
             this.checkSavedDocument(editor!.document, keepOpen);
         }
     }
@@ -560,11 +612,15 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
         }
         const document = editor.document;
         if (!this._exerciseByUri(document.uri)) {
-            vscode.window.showErrorMessage('This file is not part of a rustlings exercise');
+            vscode.window.showErrorMessage(
+                'This file is not part of a rustlings exercise'
+            );
             return;
         }
         if (document.isDirty) {
-            vscode.window.showErrorMessage('Please save your file before marking it as done/not done');
+            vscode.window.showErrorMessage(
+                'Please save your file before marking it as done/not done'
+            );
             return;
         }
         let text = document.getText();
@@ -573,7 +629,10 @@ export class RustlingsExercisesProvider implements vscode.TreeDataProvider<strin
             // Document is marked as done, so mark it as not done by adding the
             // comment at the top.
             await editor.edit((editBuilder) => {
-                editBuilder.insert(new vscode.Position(0, 0), '// I AM NOT DONE\n');
+                editBuilder.insert(
+                    new vscode.Position(0, 0),
+                    '// I AM NOT DONE\n'
+                );
             });
             await document.save();
             return;
