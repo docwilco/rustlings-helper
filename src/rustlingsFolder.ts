@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as child_process_promise from 'child-process-promise';
 import { ExerciseTree, ExerciseTreeItem } from './rustlingsExercisesProvider';
-import { Exercise } from './rustlingsExercisesView';
+import { Exercise } from './exercise';
 
 export class RustlingsFolder {
     public readonly exercisesMap: Map<string, Exercise>;

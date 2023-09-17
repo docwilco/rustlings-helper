@@ -34,6 +34,7 @@ export class Exercise {
         public path: string,
         public mode: string,
         public hintHtml: string,
+        public readmeHtml: string,
         public uri: Uri,
         public rootFolder: vscode.WorkspaceFolder
     ) { }
@@ -99,7 +100,8 @@ export class Exercise {
         const cwd = this.rootFolder.uri.fsPath;
         const command = 'rustlings run ' + this.name;
         try {
-            const result = await child_process_promise.exec(command, { cwd: cwd });
+            const result =
+                await child_process_promise.exec(command, { cwd: cwd });
             this.success = true;
         } catch (error) {
             this.success = false;

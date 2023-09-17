@@ -6,7 +6,7 @@ import { assert } from 'console';
 import {
     Exercise,
     readTextFile,
-} from './rustlingsExercisesView';
+} from './exercise';
 import { RustlingsFolder } from './rustlingsFolder';
 
 function iconForSuccessState(success?: boolean): vscode.ThemeIcon {
@@ -75,8 +75,8 @@ export class RustlingsExercisesProvider
         try {
             // Check if info.toml exists and contains exercises
             const infoUri = Uri.joinPath(folder.uri, '/info.toml');
-            const infoToml = await vscode.workspace.fs.readFile(infoUri);
-            const info = toml.parse(infoToml.toString());
+            const infoToml = await readTextFile(infoUri);
+            const info = toml.parse(infoToml);
             if (info.exercises === undefined) {
                 return [];
             }
@@ -84,23 +84,42 @@ export class RustlingsExercisesProvider
             // Just to be extra thorough, check Cargo.toml exists and has
             // "rustlings" as the package.name
             const cargoUri = Uri.joinPath(folder.uri, '/Cargo.toml');
-            const cargoToml = await vscode.workspace.fs.readFile(cargoUri);
-            const cargo = toml.parse(cargoToml.toString());
+            const cargoToml = await readTextFile(cargoUri);
+            const cargo = toml.parse(cargoToml);
             if (cargo.package === undefined) {
                 return [];
             }
             if (cargo.package.name !== 'rustlings') {
                 return [];
             }
+
+            // Read all the README.md files
+            const readmeUris = new Set<Uri>(info.exercises.map((exercise: any) => {
+                return Uri.joinPath(folder.uri, exercise.path, '../README.md');
+            }));
+            let readmeMap = new Map<string, string>();
+            for (let readmeUri of readmeUris) {
+                try {
+                    const readme = await readTextFile(readmeUri);
+                    readmeMap.set(readmeUri.toString(), readme);
+                } catch (error) {
+                }
+            }
+
             return info.exercises.map((exercise: any): Exercise => {
+                const uri = Uri.joinPath(folder.uri, exercise.path);
                 const markdown = MarkdownIt({ linkify: true });
                 const hintHtml = markdown.render(exercise.hint);
+                const readmeUri = Uri.joinPath(uri, '../README.md');
+                const readme = readmeMap.get(readmeUri.toString()) ?? '';
+                const readmeHtml = markdown.render(readme);
                 return new Exercise(
                     exercise.name,
                     exercise.path,
                     exercise.mode,
                     hintHtml,
-                    Uri.joinPath(folder.uri, exercise.path),
+                    readmeHtml,
+                    uri,
                     folder,
                 );
             })
@@ -123,7 +142,7 @@ export class RustlingsExercisesProvider
         }
     }
 
-    private _exerciseByUri(uri: Uri): Exercise | undefined {
+    public exerciseByUri(uri: Uri): Exercise | undefined {
         return this._rustlingsFolders
             .map((rustlings) => rustlings.exercisesMap.get(uri.toString()))
             .find((exercise) => exercise !== undefined);
@@ -135,7 +154,7 @@ export class RustlingsExercisesProvider
         if (currentExercise === undefined) {
             const currentUri = vscode.window.activeTextEditor?.document.uri;
             if (currentUri !== undefined) {
-                currentExercise = this._exerciseByUri(currentUri);
+                currentExercise = this.exerciseByUri(currentUri);
             }
         }
         if (currentExercise !== undefined) {
@@ -304,7 +323,7 @@ export class RustlingsExercisesProvider
     }
 
     public async fileChanged(uri: Uri): Promise<Exercise | undefined> {
-        const exercise = this._exerciseByUri(uri);
+        const exercise = this.exerciseByUri(uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
             return;
@@ -343,7 +362,7 @@ export class RustlingsExercisesProvider
         editor: vscode.TextEditor | undefined
     ) {
         const exercise = editor
-            ? this._exerciseByUri(editor.document.uri)
+            ? this.exerciseByUri(editor.document.uri)
             : undefined;
         vscode.commands.executeCommand(
             'setContext',
@@ -385,7 +404,7 @@ export class RustlingsExercisesProvider
             return;
         }
         const document = editor.document;
-        const exercise = this._exerciseByUri(document.uri);
+        const exercise = this.exerciseByUri(document.uri);
         if (exercise === undefined) {
             vscode.window.showErrorMessage(
                 'This file is not part of a rustlings exercise'
@@ -399,7 +418,6 @@ export class RustlingsExercisesProvider
         // TODO
     }
 
-
     public showReadme() {
         const document = vscode.window.activeTextEditor?.document;
         if (document === undefined) {
@@ -409,8 +427,8 @@ export class RustlingsExercisesProvider
         const readmeUri = Uri.joinPath(documentUri, '../README.md');
         vscode.commands.executeCommand('vscode.open', readmeUri);
     }
-
 }
+
 export class ExerciseTreeLeaf extends vscode.TreeItem {
     success?: boolean;
     done?: boolean;

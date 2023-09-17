@@ -1,22 +1,21 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-import { Uri } from 'vscode';
-import * as child_process from 'child_process';
-import * as child_process_promise from 'child-process-promise';
-import MarkdownIt from 'markdown-it';
-
 import { RustlingsExercisesProvider } from './rustlingsExercisesProvider';
+import { RustlingsMarkdownPanel } from './rustlingsMarkdownPanel';
 
 export async function activate(context: vscode.ExtensionContext) {
 
     const treeProvider = new RustlingsExercisesProvider();
     context.subscriptions.push(treeProvider);
 
-    const treeView = vscode.window.createTreeView('rustlingsHelper.exercisesView', {
-        treeDataProvider: treeProvider,
-        manageCheckboxStateManually: true,
-    });
+    const treeView = vscode.window.createTreeView(
+        'rustlingsHelper.exercisesView',
+        {
+            treeDataProvider: treeProvider,
+            manageCheckboxStateManually: true,
+        }
+    );
     context.subscriptions.push(treeView);
     treeProvider.setView(treeView);
 
@@ -27,7 +26,8 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
     // since the folders can load before the extension is activated, update now.
-    // do it after registering the event handler so that there's no race condition.
+    // do it after registering the event handler so that there's no race
+    // condition.
     await treeProvider.updateRustlingsFolders();
 
     const watcher = vscode.workspace.createFileSystemWatcher(
@@ -59,6 +59,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => {
             treeProvider.checkActiveEditor(editor);
+            RustlingsMarkdownPanel.activeEditorChanged(editor);
         })
     );
 
@@ -83,13 +84,18 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.openNextExercise', () => {
-            treeProvider.openNextExercise();
-        })
+        vscode.commands.registerCommand(
+            'rustlingsHelper.openNextExercise', () => {
+                treeProvider.openNextExercise();
+            }
+        )
     );
     context.subscriptions.push(
         vscode.commands.registerCommand('rustlingsHelper.readme', () => {
-            treeProvider.showReadme();
+            RustlingsMarkdownPanel.render(
+                context.extensionUri,
+                treeProvider,
+            );
         })
     );
     context.subscriptions.push(
@@ -101,13 +107,3 @@ export async function activate(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated
 export function deactivate() { }
-
-function generateNonce() {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
-
