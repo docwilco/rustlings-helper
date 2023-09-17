@@ -60,13 +60,13 @@ export async function activate(context: vscode.ExtensionContext) {
     // check active editor when it changes
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => {
-            provider.checkActiveEditor(editor, true);
+            provider.checkActiveEditor(editor);
         })
     );
 
     // Since editors can be active before the extension is activated, check the
     // active editor now.
-    provider.checkActiveEditor(vscode.window.activeTextEditor, true);
+    provider.checkActiveEditor(vscode.window.activeTextEditor);
 
     // Register commands
     context.subscriptions.push(

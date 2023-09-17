@@ -172,8 +172,11 @@ class ExerciseTreeLeaf extends vscode.TreeItem {
 
     public markDone(provider: RustlingsExercisesProvider, done: boolean) {
         if (done === this.done) {
+            // This can happen if the user clicks on the folder's checkbox and
+            // and the exercise was already in the new state.
             return;
         }
+        provider.markDone(this.exercise, done);
     }
 }
 
@@ -260,6 +263,7 @@ class ExerciseTreeBranch extends vscode.TreeItem {
 
     public markDone(provider: RustlingsExercisesProvider, done: boolean) {
         this.children.forEach((child) => {
+            child.markDone(provider, done);
         });
     }
 
@@ -332,9 +336,9 @@ export class RustlingsExercisesProvider
         this._view = treeView;
         this._view.onDidChangeCheckboxState(
             (event) => {
-                event.items.forEach((item) => {
+                event.items.forEach(async (item) => {
                     let [treeItem, state] = item;
-
+                    treeItem.markDone(this, state === vscode.TreeItemCheckboxState.Checked);
                 });
             }
         );
@@ -413,8 +417,17 @@ export class RustlingsExercisesProvider
         }
         if (currentExercise !== undefined) {
             rustlings = this._rustlingsFolders.find(
-                (folder) => folder.folder === currentExercise!.rootFolder
+                (rustlings) => rustlings.folder === currentExercise!.rootFolder
             );
+            let index = rustlings?.exercises.indexOf(currentExercise);
+            if (index !== undefined && index >= 0) {
+                index++;
+                // The only way index is defined is if rustlings is defined
+                // and exercises is defined, so we can safely use ! here.
+                // Also wrap around if we're at the end.
+                index %= rustlings!.exercises.length;
+                return rustlings!.exercises[index];
+            }
         }
         if (rustlings === undefined) {
             rustlings = this._rustlingsFolders[0];
@@ -569,7 +582,7 @@ export class RustlingsExercisesProvider
         vscode.commands.executeCommand('vscode.open', exercise.uri);
     }
 
-    private async _getFileText(uri: Uri): Promise<string> {
+    private async _readTextFile(uri: Uri): Promise<string> {
         let document = vscode.workspace.textDocuments.find(
             (document) => document.uri.toString() === uri.toString()
         );
@@ -579,6 +592,11 @@ export class RustlingsExercisesProvider
         const fileBytes = await vscode.workspace.fs.readFile(uri);
         const buffer = Buffer.from(fileBytes);
         return buffer.toString();
+    }
+
+    private async _writeTextFile(uri: Uri, text: string): Promise<void> {
+        const buffer = Buffer.from(text);
+        await vscode.workspace.fs.writeFile(uri, buffer);
     }
 
     public async fileChanged(uri: Uri): Promise<Exercise | undefined> {
@@ -592,7 +610,7 @@ export class RustlingsExercisesProvider
         exercise.done = undefined;
         exercise.treeItem?.update(this._onDidChangeTreeData);
         // Hoping that this actually doesn't block the event loop
-        const text = await this._getFileText(uri);
+        const text = await this._readTextFile(uri);
         exercise.done = text.match(this.iAmNotDoneRegex) === null;
         exercise.treeItem?.update(this._onDidChangeTreeData);
         // Allow the view to update before we check the file
@@ -625,7 +643,6 @@ export class RustlingsExercisesProvider
 
     public async checkActiveEditor(
         editor: vscode.TextEditor | undefined,
-        keepOpen: boolean = false
     ) {
         const exercise = editor
             ? this._exerciseByUri(editor.document.uri)
@@ -639,10 +656,82 @@ export class RustlingsExercisesProvider
             this._view?.reveal(exercise.treeItem!, { select: true });
             runExercise(exercise, this._onDidChangeTreeData);
         }
+        if (exercise?.name === 'intro1' && !exercise.done) {
+            const message1 = 'Welcome to the Rustlings Helper extension! '
+                + 'Please read the comments in intro1.rs before continuing, '
+                + 'but do not make any changes yet. Press Next when you are '
+                + 'done reading.';
+            await vscode.window.showInformationMessage(
+                message1,
+                'Next'
+            );
+            const message2 = 'This extension can remove the I AM NOT DONE '
+                + 'comment from the current exercise using the checkbox in the '
+                + '[Exercises](command:rustlingsHelper.exercisesView.focus) '
+                +  'view, or by using the [Rustlings Helper: Toggle Done]'
+                + '(command:rustlings-helper.toggleDone) command.';
+            vscode.window.showInformationMessage(
+                message2,
+                'Mark as done now'
+            );
+        }
     }
 
-    public async markDone(uri: Uri) {
+    private async _askToSaveForDone(
+        document: vscode.TextDocument,
+        done: boolean,
+    ): Promise<boolean> {
+        const message = document.uri.path.split('/').pop()
+            + ' needs to be saved before it can be marked as '
+            + (done ? 'done.' : 'not done.');
+        const save = await vscode.window.showWarningMessage(
+            message,
+            { modal: true },
+            'Save now'
+        );
+        if (save !== 'Save now') {
+            return false;
+        }
+        await document.save();
+        assert(!document.isDirty);
+        return true;
+    }
 
+    public async markDone(exercise: Exercise, done: boolean) {
+        const uri = exercise.uri;
+        // Check if the exercise is an open document
+        const document = vscode.workspace.textDocuments.find(
+            (document) => document.uri.toString() === uri.toString()
+        );
+        // If the document is open and dirty, prompt the user to save it before
+        // marking it as done/not done.
+        if (document?.isDirty) {
+            const saved = await this._askToSaveForDone(document, done);
+            if (!saved) {
+                // User cancelled, update so that the checkbox is reverted
+                // if the click changed it.
+                exercise.treeItem?.update(this._onDidChangeTreeData);
+                return;
+            }
+        }
+        assert(document === undefined || !document.isDirty);
+        // If the document isn't open or isn't dirty, just do raw file access.
+        // If there is an editor open for it, it will update automatically. If
+        // there isn't, we don't want to open one, needlessly.
+        let text = await this._readTextFile(exercise.uri);
+        if (done) {
+            text = text.replace(this.iAmNotDoneRegex, '');
+        } else {
+            // Determine EOL style
+            // Is this overkill? Maybe.
+            const windowsEol = text.match(/\r\n/)?.length ?? 0;
+            const unixEol = text.match(/(?<!\r)\n/)?.length ?? 0;
+            const eol = windowsEol > unixEol ? '\r\n' : '\n';
+            text = '// I AM NOT DONE' + eol + text;
+        }
+        await this._writeTextFile(exercise.uri, text);
+        exercise.done = done;
+        exercise.treeItem?.update(this._onDidChangeTreeData);
     }
 
     public async toggleDone() {
@@ -651,47 +740,14 @@ export class RustlingsExercisesProvider
             return;
         }
         const document = editor.document;
-        if (!this._exerciseByUri(document.uri)) {
+        const exercise = this._exerciseByUri(document.uri);
+        if (exercise === undefined) {
             vscode.window.showErrorMessage(
                 'This file is not part of a rustlings exercise'
             );
             return;
         }
-        if (document.isDirty) {
-            vscode.window.showErrorMessage(
-                'Please save your file before marking it as done/not done'
-            );
-            return;
-        }
-        let text = document.getText();
-        let matches = text.match(this.iAmNotDoneRegex);
-        if (matches === null) {
-            // Document is marked as done, so mark it as not done by adding the
-            // comment at the top.
-            await editor.edit((editBuilder) => {
-                editBuilder.insert(
-                    new vscode.Position(0, 0),
-                    '// I AM NOT DONE\n'
-                );
-            });
-            await document.save();
-            return;
-        }
-        // Document is marked as not done, so mark it as done by removing the
-        // markers.
-        while (matches !== null) {
-            const start = text.indexOf(matches[0]);
-            const deleteRange = new vscode.Range(
-                document.positionAt(start),
-                document.positionAt(start + matches[0].length)
-            );
-            await editor.edit((editBuilder) => {
-                editBuilder.delete(deleteRange);
-            });
-            text = document.getText();
-            matches = text.match(this.iAmNotDoneRegex);
-        }
-        await document.save();
+        this.markDone(exercise, !exercise.done);
     }
 
     async showHint() {
