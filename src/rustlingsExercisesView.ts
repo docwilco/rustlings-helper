@@ -323,7 +323,8 @@ export class RustlingsExercisesProvider
     private _autoDone: boolean = false;
 
     // Global flag (/g) so that `replace()` will match all instances
-    private readonly iAmNotDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE\n?/mg;
+    // `(\r?\n)?` to match either Windows or Unix line endings optionally
+    private readonly iAmNotDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE(\r?\n)?/mg;
 
     constructor() {
 
@@ -598,7 +599,6 @@ export class RustlingsExercisesProvider
     }
 
     public async fileChanged(uri: Uri): Promise<Exercise | undefined> {
-        console.log('fileChanged', uri.toString());
         const exercise = this._exerciseByUri(uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
@@ -612,7 +612,6 @@ export class RustlingsExercisesProvider
         exercise.done = text.match(this.iAmNotDoneRegex) === null;
         exercise.treeItem?.update(this._onDidChangeTreeData);
         // Allow the view to update before we check the file
-        //        setTimeout(async () => {
         const success = await runExercise(
             exercise,
             this._onDidChangeTreeData
@@ -636,7 +635,6 @@ export class RustlingsExercisesProvider
                 this.openNextExercise(exercise);
             }
         }
-        //        });
     }
 
     public async checkActiveEditor(
