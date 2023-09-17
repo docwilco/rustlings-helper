@@ -322,7 +322,8 @@ export class RustlingsExercisesProvider
 
     private _autoDone: boolean = false;
 
-    private readonly iAmNotDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE\n?/m;
+    // Global flag (/g) so that `replace()` will match all instances
+    private readonly iAmNotDoneRegex = /^\s*\/\/\/?\s*I\s+AM\s+NOT\s+DONE\n?/mg;
 
     constructor() {
 
@@ -583,12 +584,9 @@ export class RustlingsExercisesProvider
     }
 
     private async _readTextFile(uri: Uri): Promise<string> {
-        let document = vscode.workspace.textDocuments.find(
-            (document) => document.uri.toString() === uri.toString()
-        );
-        if (document !== undefined) {
-            return document.getText();
-        }
+        // Don't use vscode.workspace.openTextDocument() because we write to
+        // the file raw, and our change event handler gets the event before
+        // the document is updated.
         const fileBytes = await vscode.workspace.fs.readFile(uri);
         const buffer = Buffer.from(fileBytes);
         return buffer.toString();
@@ -665,15 +663,19 @@ export class RustlingsExercisesProvider
                 message1,
                 'Next'
             );
-            const message2 = 'This extension can remove the I AM NOT DONE '
+            const message2 = 'This extension can remove the "I AM NOT DONE" '
                 + 'comment from the current exercise using the checkbox in the '
                 + '[Exercises](command:rustlingsHelper.exercisesView.focus) '
                 +  'view, or by using the [Rustlings Helper: Toggle Done]'
                 + '(command:rustlings-helper.toggleDone) command.';
-            vscode.window.showInformationMessage(
+            const button2 = await vscode.window.showInformationMessage(
                 message2,
-                'Mark as done now'
+                'Mark as done now',
+                'Dismiss'
             );
+            if (button2 === 'Mark as done now') {
+                this.markDone(exercise, true);
+            }
         }
     }
 
@@ -724,8 +726,8 @@ export class RustlingsExercisesProvider
         } else {
             // Determine EOL style
             // Is this overkill? Maybe.
-            const windowsEol = text.match(/\r\n/)?.length ?? 0;
-            const unixEol = text.match(/(?<!\r)\n/)?.length ?? 0;
+            const windowsEol = text.match(/\r\n/g)?.length ?? 0;
+            const unixEol = text.match(/(?<!\r)\n/g)?.length ?? 0;
             const eol = windowsEol > unixEol ? '\r\n' : '\n';
             text = '// I AM NOT DONE' + eol + text;
         }
