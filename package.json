@@ -18,14 +18,14 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "rustlings-helper",
+          "id": "rustlingsHelper",
           "title": "Rustlings Helper",
           "icon": "media/rustlings.svg"
         }
       ]
     },
     "views": {
-      "rustlings-helper": [
+      "rustlingsHelper": [
         {
           "id": "rustlingsHelper.exercisesView",
           "type": "tree",
@@ -38,89 +38,89 @@
       {
         "view": "rustlingsHelper.exercisesView",
         "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
-        "when": "!rustlings-helper:hasRustlings"
+        "when": "!rustlingsHelper:hasRustlings"
       },
       {
         "view": "rustlingsHelper.exercisesView",
-        "contents": "No exercise open. Please open an exercise.\n[Open Next Exercise](command:rustlings-helper.openNextExercise)\n",
-        "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen && !rustlings-helper:allDone"
+        "contents": "No exercise open. Please open an exercise.\n[Open Next Exercise](command:rustlingsHelper.openNextExercise)\n",
+        "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:exerciseOpen && !rustlingsHelper:allDone"
       },
       {
         "view": "rustlingsHelper.exercisesView",
-        "contents": "Congratulations! You have completed all exercises.\nYou can still go back and play with the exercises.\n[Open Exercise](command:rustlings-helper.openExercise)\n",
-        "when": "rustlings-helper:hasRustlings && !rustlings-helper:exerciseOpen && rustlings-helper:allDone"
+        "contents": "Congratulations! You have completed all exercises.\nYou can still go back and play with the exercises.\n[Open Exercise](command:rustlingsHelper.openExercise)\n",
+        "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:exerciseOpen && rustlingsHelper:allDone"
       }
     ],
     "commands": [
       {
-        "command": "rustlings-helper.openNextExercise",
+        "command": "rustlingsHelper.openNextExercise",
         "title": "Open Next Exercise",
-        "when": "rustlings-helper:hasRustlings",
+        "when": "rustlingsHelper:hasRustlings",
         "category": "Rustlings Helper"
       },
       {
-        "command": "rustlings-helper.openExercise",
+        "command": "rustlingsHelper.openExercise",
         "title": "Open Exercise",
-        "when": "rustlings-helper:hasRustlings",
+        "when": "rustlingsHelper:hasRustlings",
         "category": "Rustlings Helper"
       },
       {
-        "command": "rustlings-helper.toggleDone",
+        "command": "rustlingsHelper.toggleDone",
         "title": "Toggle Done on Exercise",
-        "when": "rustlings-helper:exerciseOpen",
+        "when": "rustlingsHelper:exerciseOpen",
         "category": "Rustlings Helper",
         "icon": "$(check)"
       },
       {
-        "command": "rustlings-helper.watch",
+        "command": "rustlingsHelper.watch",
         "title": "Start Rustlings Watch",
-        "when": "rustlings-helper:hasRustlings && !rustlings-helper:watching",
+        "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:watching",
         "category": "Rustlings Helper",
         "icon": "$(eye)"
       },
       {
-        "command": "rustlings-helper.hint",
+        "command": "rustlingsHelper.hint",
         "title": "Show Hint",
-        "when": "rustlings-helper:exerciseOpen",
+        "when": "rustlingsHelper:exerciseOpen",
         "category": "Rustlings Helper",
         "icon": "$(question)"
       },
       {
-        "command": "rustlings-helper.readme",
+        "command": "rustlingsHelper.readme",
         "title": "Open Readme for section",
-        "when": "rustlings-helper:exerciseOpen",
+        "when": "rustlingsHelper:exerciseOpen",
         "category": "Rustlings Helper",
         "icon": "$(info)"
       }
     ],
     "keybindings": [
       {
-        "command": "rustlings-helper.toggleDone",
+        "command": "rustlingsHelper.toggleDone",
         "key": "ctrl+alt+d",
         "mac": "ctrl+cmd+d",
-        "when": "rustlings-helper:exerciseOpen"
+        "when": "rustlingsHelper:exerciseOpen"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "rustlings-helper.watch",
-          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:hasRustlings && !rustlings-helper:watching",
+          "command": "rustlingsHelper.watch",
+          "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:hasRustlings && !rustlingsHelper:watching",
           "group": "navigation"
         },
         {
-          "command": "rustlings-helper.toggleDone",
-          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:exerciseOpen",
+          "command": "rustlingsHelper.toggleDone",
+          "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
           "group": "navigation"
         },
         {
-          "command": "rustlings-helper.hint",
-          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:exerciseOpen",
+          "command": "rustlingsHelper.hint",
+          "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
           "group": "navigation"
         },
         {
-          "command": "rustlings-helper.readme",
-          "when": "view == rustlingsHelper.exercisesView && rustlings-helper:exerciseOpen",
+          "command": "rustlingsHelper.readme",
+          "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
           "group": "navigation"
         }
       ]
