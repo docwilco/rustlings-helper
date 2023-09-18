@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     // Since we should only activate if there's a Rustlings folder, kick off the
     // Watch automatically.
-    treeProvider.rustlingsWatch();
+    await treeProvider.rustlingsWatch();
 
     // check active editor when it changes
     context.subscriptions.push(
@@ -69,8 +69,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.watch', () => {
-            treeProvider.rustlingsWatch();
+        vscode.commands.registerCommand('rustlingsHelper.watch', async () => {
+            await treeProvider.rustlingsWatch();
         })
     );
     context.subscriptions.push(

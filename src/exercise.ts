@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
 import { Uri } from 'vscode';
-import * as child_process_promise from 'child-process-promise';
 import { assert } from 'console';
 import { ExerciseTreeLeaf } from './rustlingsExercisesProvider';
 import { RustlingsFolder } from './rustlingsFolder';
-import { ChildProcessError } from 'child-process-promise';
+import * as child_process from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(child_process.exec);
+const timeoutPromise = promisify(setTimeout);
 
 export async function readTextFile(uri: Uri): Promise<string> {
     // Don't use vscode.workspace.openTextDocument() because we write to
@@ -97,40 +100,49 @@ export class Exercise {
             text = '// I AM NOT DONE' + eol + text;
         }
         await writeTextFile(this.uri, text);
-        this.done = done;
         this.treeItem?.update();
     }
 
     public async run(): Promise<boolean> {
         const cwd = this.rootFolder.uri.fsPath;
         const command = 'rustlings run ' + this.name;
-        try {
-            const result = await child_process.exec(command, { cwd: cwd }); 
-            child_process_promise.exec(command, { cwd: cwd });
+        await execAsync(
+            command,
+            { cwd: cwd }
+        ).then((result) => {
             this.runStdout = result.stdout;
+            this.runStderr = result.stderr;
             this.success = true;
-        } catch (error) {
+        }).catch((error) => {
+            this.runStdout = error.stdout;
+            this.runStderr = error.stderr;
             this.success = false;
-//            export interface ChildProcessError extends Error {
-//                name: string;
-//                code: number;
-//                childProcess: ChildProcess;
-//                stdout: string | Buffer;
-//                stderr: string | Buffer;
-//            }
-            
-            if (error.stdout) {
-                this.runStdout = error.stdout.toString();
-                this.runStderr = error.stderr.toString();
-            } else if (error instanceof Error) {
-                this.runStderr = error.toString();
-            }
-            if (vscode.window.activeTextEditor?.document.uri.toString() === this.uri.toString()) {
-                const output = this.runStdout ?? '' + this.runStderr ?? '';
-                this.rustlingsFolder?.pty?.write(output);
-            }
-        }
+        });
+
         this.treeItem?.update();
-        return this.success;
+        if (vscode.window.activeTextEditor?.document.uri.toString() === this.uri.toString()) {
+            this.printRunOutput();
+        }
+        return this.success === true;
+    }
+
+    public async printRunOutput() {
+        if (this.runStdout === undefined && this.runStderr === undefined) {
+            return;
+        }
+        const pty = this.rustlingsFolder?.pty;
+        if (pty === undefined) {
+            return;
+        }
+        await vscode.commands.executeCommand(
+            'workbench.action.terminal.clear'
+        );
+        let output = this.runStdout ?? '' + this.runStderr ?? '';
+        output = output.replace(/\n/g, '\r\n');
+        pty.write(output);
+        pty.show;
+        vscode.commands.executeCommand(
+            'workbench.action.terminal.scrollToTop'
+        );
     }
 }

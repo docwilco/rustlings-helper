@@ -76,42 +76,49 @@ export class RustlingsFolder {
     }
 
     public pty?: RustlingsPty;
-    private _terminal?: vscode.Terminal;
+    public terminal?: vscode.Terminal;
 
     public watch() {
         if (this.pty === undefined) {
             this.pty = new RustlingsPty(this);
         }
-        if (this._terminal === undefined) {
-            this._terminal = vscode.window.createTerminal({
+        if (this.terminal === undefined) {
+            this.terminal = vscode.window.createTerminal({
                 name: `Rustlings: ${this.folder.name}`,
                 pty: this.pty,
             });
         }
-        this._terminal.show();
+        this.terminal.show(true);
     }
 }
 
 class RustlingsPty implements vscode.Pseudoterminal {
-	private writeEmitter = new vscode.EventEmitter<string>();
-	onDidWrite: vscode.Event<string> = this.writeEmitter.event;
-	private closeEmitter = new vscode.EventEmitter<number>();
-	onDidClose?: vscode.Event<number> = this.closeEmitter.event;
+    private writeEmitter = new vscode.EventEmitter<string>();
+    onDidWrite: vscode.Event<string> = this.writeEmitter.event;
+    private closeEmitter = new vscode.EventEmitter<number>();
+    onDidClose?: vscode.Event<number> = this.closeEmitter.event;
 
     private _isOpen = false;
 
     constructor(private _folder: RustlingsFolder) { }
+
     public open(): void {
         this._isOpen = true;
         this.writeEmitter.fire('Welcome to Rustlings!\r\n');
     }
+
     public close(): void {
         this._isOpen = false;
     }
+
     public write(data: string): void {
         if (!this._isOpen) {
             return;
         }
         this.writeEmitter.fire(data);
+    }
+
+    public show() {
+        this._folder.terminal?.show(true);
     }
 }

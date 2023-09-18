@@ -160,18 +160,22 @@ export class RustlingsExercisesProvider
                 currentExercise = this.exerciseByUri(currentUri);
             }
         }
+
         if (currentExercise !== undefined) {
             rustlings = this._rustlingsFolders.find(
                 (rustlings) => rustlings.folder === currentExercise!.rootFolder
             );
             let index = rustlings?.exercises.indexOf(currentExercise);
             if (index !== undefined && index >= 0) {
-                index++;
-                // The only way index is defined is if rustlings is defined
-                // and exercises is defined, so we can safely use ! here.
-                // Also wrap around if we're at the end.
-                index %= rustlings!.exercises.length;
-                return rustlings!.exercises[index];
+                // Make a new array starting at the current exercise
+                let potentialNext = rustlings!.exercises.slice(index);
+                potentialNext = potentialNext.concat(rustlings!.exercises.slice(0, index));
+                // Take out current exercise using shift, so we don't have to
+                // bounds check the index in the lines above.
+                potentialNext.shift();
+                return potentialNext.find(
+                    (exercise) => !exercise.done || !exercise.success
+                );
             }
         }
         if (rustlings === undefined) {
@@ -381,11 +385,14 @@ export class RustlingsExercisesProvider
             'rustlingsHelper:exerciseOpen',
             exercise !== undefined
         );
-        if (exercise !== undefined) {
-            this._view?.reveal(exercise.treeItem!, { select: true });
-            exercise.run();
+        if (exercise === undefined) {
+            return;
         }
-        if (exercise?.name === 'intro1' && !exercise.done) {
+        this._view?.reveal(exercise.treeItem!, { select: true });
+        exercise.run();
+        await exercise.printRunOutput();
+
+        if (exercise.name === 'intro1' && !exercise.done) {
             const message1 = 'Welcome to the Rustlings Helper extension! '
                 + 'Please read the comments in intro1.rs before continuing, '
                 + 'but do not make any changes yet. Press Next when you are '
