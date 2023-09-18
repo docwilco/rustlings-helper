@@ -46,8 +46,6 @@ export class RustlingsExercisesProvider
 
     private _watchTerminal: vscode.Terminal | undefined = undefined;
 
-    private _autoDone: boolean = false;
-
     constructor() {
     }
 
@@ -62,7 +60,7 @@ export class RustlingsExercisesProvider
                 event.items.forEach(async (item) => {
                     let [treeItem, state] = item;
                     treeItem.markDone(
-                        this, state === vscode.TreeItemCheckboxState.Checked
+                        state === vscode.TreeItemCheckboxState.Checked
                     );
                 });
             }
@@ -94,9 +92,14 @@ export class RustlingsExercisesProvider
             }
 
             // Read all the README.md files
-            const readmeUris = new Set<Uri>(info.exercises.map((exercise: any) => {
-                return Uri.joinPath(folder.uri, exercise.path, '../README.md');
-            }));
+            const readmeUris = new Set<Uri>(
+                info.exercises.map((exercise: any) => {
+                    return Uri.joinPath(
+                        folder.uri,
+                        exercise.path,
+                        '../README.md');
+                })
+            );
             let readmeMap = new Map<string, string>();
             for (let readmeUri of readmeUris) {
                 try {
@@ -174,13 +177,16 @@ export class RustlingsExercisesProvider
         if (rustlings === undefined) {
             rustlings = this._rustlingsFolders[0];
         }
-        const folder = rustlings.folder;
-        return rustlings.exercises.find(
+        return rustlings?.exercises.find(
             (exercise) => !exercise.done || !exercise.success
         );
     }
 
     async updateRustlingsFolders() {
+        vscode.commands.executeCommand(
+            'setContext', 'rustlingsHelper:hasRustlingsKnown',
+            false,
+        );
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (workspaceFolders === undefined) {
             this._rustlingsFolders = [];
@@ -198,17 +204,20 @@ export class RustlingsExercisesProvider
             assert(this._view !== undefined);
             this._rustlingsFolders = (await Promise.all(foldersPromises))
                 .filter((rustlings) => rustlings.exercises.length > 0)
-                .map((rustlings, index) => new RustlingsFolder(
+                .map((rustlings) => new RustlingsFolder(
                     this._view!,
                     this._onDidChangeTreeData,
                     rustlings.folder,
                     rustlings.exercises
-                )
-                );
+                ));
         }
         vscode.commands.executeCommand(
             'setContext', 'rustlingsHelper:hasRustlings',
             this._rustlingsFolders.length > 0
+        );
+        vscode.commands.executeCommand(
+            'setContext', 'rustlingsHelper:hasRustlingsKnown',
+            true,
         );
         this._onDidChangeTreeData.fire(undefined);
         this._rustlingsFolders.forEach(
@@ -240,7 +249,7 @@ export class RustlingsExercisesProvider
             return;
         }
         // TODO: support multiple folders for Watch
-        const cwd = this._rustlingsFolders[0].folder.uri.fsPath;
+        const cwd = this._rustlingsFolders[0]!.folder.uri.fsPath;
         if (this._watchTerminal === undefined
             || this._watchTerminal.exitStatus !== undefined) {
             if (this._watchTerminal?.exitStatus) {
@@ -286,24 +295,23 @@ export class RustlingsExercisesProvider
             // We need to open the next exercise before closing the current one,
             // because otherwise we lose the ViewColumn if it's the only editor
             // open in its column. So we need to:
-            // 1. Open the next exercise, without focusing it
-            // 2. Close the current exercise
+            // 1. Open the next exercise, unfortunately preseveFocus doesn't
+            //    preserve the tab focus, only the viewcolumn. 
+            // 2. Focus and close the current exercise 
             // 3. Focus the next exercise
+
+            // Open the next. Use openTextDocument instead of vscode.open command,
+            // because we want to focus the editor after closing the current one.
             const document = await vscode.workspace.openTextDocument(
                 nextExercise.uri
             );
-            await vscode.window.showTextDocument(
-                document,
-                {
-                    preserveFocus: true,
-                }
-            );
-            // Check that our current editor is still active
-            if (vscode.window.activeTextEditor === currentEditor) {
-                await vscode.commands.executeCommand(
-                    'workbench.action.closeActiveEditor'
-                );
+            await vscode.window.showTextDocument(document);
+            if (currentEditor === undefined) {
+                return;
             }
+            // Now to focus and close the current exercise
+            await vscode.window.showTextDocument(currentEditor.document);
+            await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
             vscode.window.showTextDocument(document);
         }
     }
@@ -313,7 +321,7 @@ export class RustlingsExercisesProvider
         // show picker with all exercises
         class ExercisePickerItem implements vscode.QuickPickItem {
             public readonly label: string;
-            public readonly description: string | undefined = undefined;
+            public readonly description?: string;
             constructor(public readonly exercise: Exercise) {
                 this.label = this.exercise.path.replace(/exercises\//, '');
                 if (this.exercise.done) {
@@ -346,12 +354,14 @@ export class RustlingsExercisesProvider
         vscode.commands.executeCommand('vscode.open', exercise.uri);
     }
 
-    public async fileChanged(uri: Uri): Promise<Exercise | undefined> {
+    public async fileChanged(uri: Uri): Promise<void> {
         const exercise = this.exerciseByUri(uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
             return;
         }
+        const previousSuccess = exercise.success;
+        const previousDone = exercise.done;
         exercise.success = undefined;
         exercise.done = undefined;
         exercise.treeItem?.update();
@@ -367,18 +377,11 @@ export class RustlingsExercisesProvider
             // don't do anything else.
             return;
         }
-        if (success) {
-            if (!exercise.done && this._autoDone) {
-                this.toggleDone();
-            } else if (exercise.done) {
-                vscode.window.showInformationMessage(
-                    'You finished ' + exercise.name + '!'
-                );
-                await vscode.commands.executeCommand(
-                    'workbench.action.closeActiveEditor'
-                );
-                this.openNextExercise(exercise);
-            }
+        if (success && exercise.done && (!previousSuccess || !previousDone)) {
+            vscode.window.showInformationMessage(
+                'You finished ' + exercise.name + '!'
+            );
+            this.openNextExercise(exercise, activeEditor);
         }
     }
 
@@ -489,7 +492,7 @@ export class ExerciseTreeLeaf extends vscode.TreeItem {
         this.parent.update();
     }
 
-    public markDone(provider: RustlingsExercisesProvider, done: boolean) {
+    public markDone(done: boolean) {
         if (done === this.done) {
             // This can happen if the user clicks on the folder's checkbox and
             // and the exercise was already in the new state.
@@ -529,7 +532,7 @@ class ExerciseTreeBranch extends vscode.TreeItem {
                 new ExerciseTreeLeaf(
                     this._onDidChangeTreeData,
                     this,
-                    pathElements[0],
+                    pathElements[0]!,
                     exercise
                 )
             );
@@ -588,9 +591,9 @@ class ExerciseTreeBranch extends vscode.TreeItem {
         this.parent?.update();
     }
 
-    public markDone(provider: RustlingsExercisesProvider, done: boolean) {
+    public markDone(done: boolean) {
         this.children.forEach((child) => {
-            child.markDone(provider, done);
+            child.markDone(done);
         });
     }
 
@@ -620,7 +623,7 @@ export class ExerciseTree extends ExerciseTreeBranch {
         });
     }
 
-    public update(): void {
+    public override update(): void {
         this.checkChildren();
         if (this.done && this.success) {
             this._treeView.message = "You have finished all the exercises!";

@@ -12,12 +12,18 @@
 		"esModuleInterop": true,
 		"strict": true,   /* enable all strict type-checking options */
 		/* Additional Checks */
+		/* 
+		 * This should be everything not covered by the strict flag, except
+		 * exactOptionalPropertyTypes, because that messes with our
+		 * Exercise.success/done assignments.
+		 */
 		"allowUnreachableCode": false, /* Report errors on unreachable code. */
 		"allowUnusedLabels": false, /* Report errors on unused labels */
-		"exactOptionalPropertyTypes": true, /* Interpret optional property types as written, rather than adding 'undefined'. */
 		"noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
-
+		"noImplicitOverride": true, /* Ensure overriding members in derived classes are marked with an 'override' modifier. */
 		"noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
+		"noPropertyAccessFromIndexSignature": true, /* Enforces using indexed accessors for keys declared using an indexed type */
+		"noUncheckedIndexedAccess": true, /* Include 'undefined' in index signature results */
 		"noUnusedParameters": true,  /* Report errors on unused parameters. */
 		"noUnusedLocals": true, /* Report errors on unused locals. */
 	}

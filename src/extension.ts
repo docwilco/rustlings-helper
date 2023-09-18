@@ -74,11 +74,6 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.hint', () => {
-            treeProvider.showHint();
-        })
-    );
-    context.subscriptions.push(
         vscode.commands.registerCommand('rustlingsHelper.toggleDone', () => {
             treeProvider.toggleDone();
         })
@@ -91,16 +86,26 @@ export async function activate(context: vscode.ExtensionContext) {
         )
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.readme', () => {
+        vscode.commands.registerCommand('rustlingsHelper.openExercise', () => {
+            treeProvider.openExercise();
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('rustlingsHelper.showHint', () => {
             RustlingsMarkdownPanel.render(
                 context.extensionUri,
                 treeProvider,
+                'hint',
             );
         })
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.openExercise', () => {
-            treeProvider.openExercise();
+        vscode.commands.registerCommand('rustlingsHelper.showReadme', () => {
+            RustlingsMarkdownPanel.render(
+                context.extensionUri,
+                treeProvider,
+                'readme',
+            );
         })
     );
 }

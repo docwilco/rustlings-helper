@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { Uri } from 'vscode';
-import { Exercise } from "./exercise";
 import { RustlingsExercisesProvider } from "./rustlingsExercisesProvider";
 
 function getUri(
@@ -41,20 +40,25 @@ export class RustlingsMarkdownPanel {
     public static render(
         extensionUri: Uri,
         exercisesProvider: RustlingsExercisesProvider,
+        show?: 'hint' | 'readme',
     ) {
         const editor = vscode.window.activeTextEditor;
-        const column = editor
-            ? vscode.ViewColumn.Beside
+        if (!editor) {
+            return;
+        }
+        const column = editor.viewColumn
+            ? editor.viewColumn + 1
             : vscode.ViewColumn.Active;
         if (RustlingsMarkdownPanel.currentPanel) {
             RustlingsMarkdownPanel.currentPanel._panel.reveal(
-                column
+                column,
+                true
             );
         } else {
             const panel = vscode.window.createWebviewPanel(
-                "hello-world",
-                "Hello World",
-                column,
+                "rustlingsHelper.infoPanel",
+                "Rustlings Info",
+                { viewColumn: column, preserveFocus: true },
                 {
                     enableScripts: true,
                     localResourceRoots: [
@@ -68,13 +72,16 @@ export class RustlingsMarkdownPanel {
                 exercisesProvider,
                 extensionUri
             );
-            if (editor) {
-                RustlingsMarkdownPanel.activeEditorChanged(editor);
-            }
+        }
+        if (editor) {
+            RustlingsMarkdownPanel.activeEditorChanged(editor, show);
         }
     }
 
-    public static activeEditorChanged(editor: vscode.TextEditor | undefined) {
+    public static activeEditorChanged(
+        editor: vscode.TextEditor | undefined,
+        show?: 'hint' | 'readme',
+    ) {
         if (!editor) {
             return;
         }
@@ -89,9 +96,11 @@ export class RustlingsMarkdownPanel {
             return;
         }
         panel._panel.webview.postMessage({
-            command: "showInfo",
+            command: "setExerciseInfo",
             hintHtml: exercise.hintHtml,
             readmeHtml: exercise.readmeHtml,
+            showHint: show === 'hint',
+            showReadme: show === 'readme',
         });
     }
 

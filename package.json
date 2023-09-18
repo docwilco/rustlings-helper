@@ -38,17 +38,7 @@
       {
         "view": "rustlingsHelper.exercisesView",
         "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
-        "when": "!rustlingsHelper:hasRustlings"
-      },
-      {
-        "view": "rustlingsHelper.exercisesView",
-        "contents": "No exercise open. Please open an exercise.\n[Open Next Exercise](command:rustlingsHelper.openNextExercise)\n",
-        "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:exerciseOpen && !rustlingsHelper:allDone"
-      },
-      {
-        "view": "rustlingsHelper.exercisesView",
-        "contents": "Congratulations! You have completed all exercises.\nYou can still go back and play with the exercises.\n[Open Exercise](command:rustlingsHelper.openExercise)\n",
-        "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:exerciseOpen && rustlingsHelper:allDone"
+        "when": "rustlingsHelper:hasRustlingsKnown && !rustlingsHelper:hasRustlings"
       }
     ],
     "commands": [
@@ -79,14 +69,14 @@
         "icon": "$(eye)"
       },
       {
-        "command": "rustlingsHelper.hint",
+        "command": "rustlingsHelper.showHint",
         "title": "Show Hint",
         "when": "rustlingsHelper:exerciseOpen",
         "category": "Rustlings Helper",
         "icon": "$(question)"
       },
       {
-        "command": "rustlingsHelper.readme",
+        "command": "rustlingsHelper.showReadme",
         "title": "Open Readme for section",
         "when": "rustlingsHelper:exerciseOpen",
         "category": "Rustlings Helper",
@@ -114,12 +104,12 @@
           "group": "navigation"
         },
         {
-          "command": "rustlingsHelper.hint",
+          "command": "rustlingsHelper.showHint",
           "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
           "group": "navigation"
         },
         {
-          "command": "rustlingsHelper.readme",
+          "command": "rustlingsHelper.showReadme",
           "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
           "group": "navigation"
         }
