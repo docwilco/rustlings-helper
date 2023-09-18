@@ -4,7 +4,7 @@ import { ExerciseTree, ExerciseTreeItem } from './rustlingsExercisesProvider';
 import { Exercise } from './exercise';
 
 export class RustlingsFolder {
-    public readonly exercisesMap: Map<string, Exercise>;
+    public readonly exercisesUriMap: Map<string, Exercise>;
     public readonly exercisesTree: ExerciseTree;
     constructor(
         private _view: vscode.TreeView<ExerciseTreeItem>,
@@ -12,12 +12,10 @@ export class RustlingsFolder {
         public readonly folder: vscode.WorkspaceFolder,
         public readonly exercises: Exercise[]
     ) {
-        this.exercisesMap = new Map<string, Exercise>();
+        this.exercisesUriMap = new Map<string, Exercise>();
         exercises.forEach((exercise) => {
-            // Map on multiple types of keys
-            this.exercisesMap.set(exercise.uri.toString(), exercise);
-            this.exercisesMap.set(exercise.name, exercise);
-            this.exercisesMap.set(exercise.path, exercise);
+            this.exercisesUriMap.set(exercise.uri.toString(), exercise);
+            exercise.rustlingsFolder = this;
         });
         this.exercisesTree = new ExerciseTree(
             this._view,
@@ -75,5 +73,45 @@ export class RustlingsFolder {
                 setTimeout(checkRunExercise);
             });
         }, 1000); // Again 1 second so updates happen
+    }
+
+    public pty?: RustlingsPty;
+    private _terminal?: vscode.Terminal;
+
+    public watch() {
+        if (this.pty === undefined) {
+            this.pty = new RustlingsPty(this);
+        }
+        if (this._terminal === undefined) {
+            this._terminal = vscode.window.createTerminal({
+                name: `Rustlings: ${this.folder.name}`,
+                pty: this.pty,
+            });
+        }
+        this._terminal.show();
+    }
+}
+
+class RustlingsPty implements vscode.Pseudoterminal {
+	private writeEmitter = new vscode.EventEmitter<string>();
+	onDidWrite: vscode.Event<string> = this.writeEmitter.event;
+	private closeEmitter = new vscode.EventEmitter<number>();
+	onDidClose?: vscode.Event<number> = this.closeEmitter.event;
+
+    private _isOpen = false;
+
+    constructor(private _folder: RustlingsFolder) { }
+    public open(): void {
+        this._isOpen = true;
+        this.writeEmitter.fire('Welcome to Rustlings!\r\n');
+    }
+    public close(): void {
+        this._isOpen = false;
+    }
+    public write(data: string): void {
+        if (!this._isOpen) {
+            return;
+        }
+        this.writeEmitter.fire(data);
     }
 }

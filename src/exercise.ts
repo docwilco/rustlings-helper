@@ -3,6 +3,8 @@ import { Uri } from 'vscode';
 import * as child_process_promise from 'child-process-promise';
 import { assert } from 'console';
 import { ExerciseTreeLeaf } from './rustlingsExercisesProvider';
+import { RustlingsFolder } from './rustlingsFolder';
+import { ChildProcessError } from 'child-process-promise';
 
 export async function readTextFile(uri: Uri): Promise<string> {
     // Don't use vscode.workspace.openTextDocument() because we write to
@@ -22,6 +24,8 @@ export class Exercise {
     // For these two, undefined means we don't know yet
     success?: boolean;
     done?: boolean;
+    runStdout?: string;
+    runStderr?: string;
     treeItem?: ExerciseTreeLeaf;
 
     // Global flag (/g) so that `replace()` will match all instances
@@ -36,7 +40,8 @@ export class Exercise {
         public hintHtml: string,
         public readmeHtml: string,
         public uri: Uri,
-        public rootFolder: vscode.WorkspaceFolder
+        public rootFolder: vscode.WorkspaceFolder,
+        public rustlingsFolder?: RustlingsFolder,
     ) { }
 
     private async _askToSaveForDone(
@@ -100,11 +105,30 @@ export class Exercise {
         const cwd = this.rootFolder.uri.fsPath;
         const command = 'rustlings run ' + this.name;
         try {
-            const result =
-                await child_process_promise.exec(command, { cwd: cwd });
+            const result = await child_process.exec(command, { cwd: cwd }); 
+            child_process_promise.exec(command, { cwd: cwd });
+            this.runStdout = result.stdout;
             this.success = true;
         } catch (error) {
             this.success = false;
+//            export interface ChildProcessError extends Error {
+//                name: string;
+//                code: number;
+//                childProcess: ChildProcess;
+//                stdout: string | Buffer;
+//                stderr: string | Buffer;
+//            }
+            
+            if (error.stdout) {
+                this.runStdout = error.stdout.toString();
+                this.runStderr = error.stderr.toString();
+            } else if (error instanceof Error) {
+                this.runStderr = error.toString();
+            }
+            if (vscode.window.activeTextEditor?.document.uri.toString() === this.uri.toString()) {
+                const output = this.runStdout ?? '' + this.runStderr ?? '';
+                this.rustlingsFolder?.pty?.write(output);
+            }
         }
         this.treeItem?.update();
         return this.success;

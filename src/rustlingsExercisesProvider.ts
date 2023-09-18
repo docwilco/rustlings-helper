@@ -147,7 +147,7 @@ export class RustlingsExercisesProvider
 
     public exerciseByUri(uri: Uri): Exercise | undefined {
         return this._rustlingsFolders
-            .map((rustlings) => rustlings.exercisesMap.get(uri.toString()))
+            .map((rustlings) => rustlings.exercisesUriMap.get(uri.toString()))
             .find((exercise) => exercise !== undefined);
     }
 
@@ -248,21 +248,7 @@ export class RustlingsExercisesProvider
         if (this._rustlingsFolders.length === 0) {
             return;
         }
-        // TODO: support multiple folders for Watch
-        const cwd = this._rustlingsFolders[0]!.folder.uri.fsPath;
-        if (this._watchTerminal === undefined
-            || this._watchTerminal.exitStatus !== undefined) {
-            if (this._watchTerminal?.exitStatus) {
-                this._watchTerminal.dispose();
-            }
-            this._watchTerminal = vscode.window.createTerminal({
-                name: 'Rustlings Watch',
-                cwd: cwd,
-                shellPath: 'rustlings',
-                shellArgs: ['watch']
-            });
-        }
-        this._watchTerminal.show();
+        this._rustlingsFolders.forEach((rustlings) => rustlings.watch());
     }
 
     terminalClosed(terminal: vscode.Terminal) {
@@ -369,7 +355,6 @@ export class RustlingsExercisesProvider
         const text = await readTextFile(uri);
         exercise.done = text.match(Exercise.iAmNotDoneRegex) === null;
         exercise.treeItem?.update();
-        // Allow the view to update before we check the file
         const success = await exercise.run();
         const activeEditor = vscode.window.activeTextEditor;
         if (!(activeEditor?.document.uri.toString() === uri.toString())) {
