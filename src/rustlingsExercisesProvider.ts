@@ -273,14 +273,38 @@ export class RustlingsExercisesProvider
         );
     }
 
-    public async openNextExercise(currentExercise?: Exercise) {
-        const nextExercise = await this._getNextExercise(currentExercise);
+    public async openNextExercise(
+        currentExercise?: Exercise,
+        currentEditor?: vscode.TextEditor
+    ) {
+        const nextExercise = this._getNextExercise(currentExercise);
         if (nextExercise === undefined) {
             vscode.window.showInformationMessage(
                 'You finished all the exercises!'
             );
         } else {
-            vscode.commands.executeCommand('vscode.open', nextExercise.uri);
+            // We need to open the next exercise before closing the current one,
+            // because otherwise we lose the ViewColumn if it's the only editor
+            // open in its column. So we need to:
+            // 1. Open the next exercise, without focusing it
+            // 2. Close the current exercise
+            // 3. Focus the next exercise
+            const document = await vscode.workspace.openTextDocument(
+                nextExercise.uri
+            );
+            await vscode.window.showTextDocument(
+                document,
+                {
+                    preserveFocus: true,
+                }
+            );
+            // Check that our current editor is still active
+            if (vscode.window.activeTextEditor === currentEditor) {
+                await vscode.commands.executeCommand(
+                    'workbench.action.closeActiveEditor'
+                );
+            }
+            vscode.window.showTextDocument(document);
         }
     }
 

@@ -133,10 +133,40 @@ export class RustlingsMarkdownPanel {
                     <title>Hello World!</title>
                 </head>
                 <body>
-                    <h1>Hello World!</h1>
-                    <div id="hint"></div>
-                    <div id="readme"></div>
-                    <vscode-button id="howdy">Howdy!</vscode-button>
+                    <vscode-panels>
+                        <vscode-panel-tab id="hint-tab">
+                            HINT
+                        </vscode-panel-tab>
+                        <vscode-panel-tab id="readme-tab">
+                            README
+                        </vscode-panel-tab>
+                        <vscode-panel-view id="hint-view">
+                            <div id="hint-visible" hidden>
+                                <vscode-button id="hide-hint-button">
+                                    Hide Hint
+                                </vscode-button>
+                                <div id="hint"></div>
+                            </div>
+                            <div id="hint-hidden">
+                                <vscode-button id="show-hint-button">
+                                    Show Hint
+                                </vscode-button>
+                            </div>
+                        </vscode-panel-view>
+                        <vscode-panel-view id="readme-view">
+                            <div id="readme-visible" hidden>
+                                <vscode-button id="hide-readme-button">
+                                    Hide Readme
+                                </vscode-button>
+                                <div id="readme"></div>
+                            </div>
+                            <div id="readme-hidden">
+                                <vscode-button id="show-readme-button">
+                                    Show Readme
+                                </vscode-button>
+                            </div>
+                        </vscode-panel-view>
+                    </vscode-panels>
                     <script type="module" nonce="${nonce}" src="${webviewUri}">
                     </script>
                 </body>
