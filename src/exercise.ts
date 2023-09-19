@@ -205,6 +205,9 @@ export class Exercise {
             if (stderr !== undefined && stderr !== '') {
                 output += stderr + '\r\n';
             }
+            while (output.endsWith('\r\n\r\n')) {
+                output = output.slice(0, -2);
+            }
             output += separator + '\r\n';
         }
         if (!this.done) {
