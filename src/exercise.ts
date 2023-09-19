@@ -134,13 +134,14 @@ export class Exercise {
         if (pty === undefined) {
             return;
         }
+        pty.show();
         await vscode.commands.executeCommand(
             'workbench.action.terminal.clear'
         );
         let output = this.runStdout ?? '' + this.runStderr ?? '';
         output = output.replace(/\n/g, '\r\n');
         pty.write(output);
-        pty.show;
+        pty.show();
         vscode.commands.executeCommand(
             'workbench.action.terminal.scrollToTop'
         );
