@@ -5,6 +5,13 @@ import { ExerciseTreeLeaf } from './rustlingsExercisesProvider';
 import { RustlingsFolder } from './rustlingsFolder';
 import * as child_process from 'child_process';
 import { promisify } from 'util';
+import { Chalk } from 'chalk';
+
+const chalk = new Chalk({ level: 1 });
+const red = chalk.red;
+const green = chalk.green;
+const blue = chalk.blue;
+const bold = chalk.bold;
 
 const execAsync = promisify(child_process.exec);
 const timeoutPromise = promisify(setTimeout);
@@ -126,6 +133,88 @@ export class Exercise {
         return this.success === true;
     }
 
+    private async _getNotDoneWithContext(): Promise<string> {
+        // File should be open, or we wouldn't be calling this method
+        const document = vscode.window.activeTextEditor?.document;
+        let text = document?.getText();
+        if (document === undefined || document.uri.toString() !== this.uri.toString()) {
+            text = await readTextFile(this.uri);
+        }
+        const lines = text!.split(/\r?\n/).map((line, index) => {
+            return { text: line, index: index };
+        });
+        const notDoneLine = lines.find((line) => line.text.match(Exercise.iAmNotDoneRegex));
+        if (notDoneLine === undefined) {
+            return '';
+        }
+        const startLine = Math.max(0, notDoneLine.index - 2);
+        const endLine = Math.min(lines.length - 1, notDoneLine.index + 2);
+        let output = '';
+        for (let i = startLine; i <= endLine; i++) {
+            const lineNumber = (i + 1).toString().padStart(2) + ' |  ';
+            const lineTextRaw = lines[i]!.text;
+            const lineText = i === notDoneLine.index ? bold(lineTextRaw) : lineTextRaw;
+            output += blue(lineNumber) + lineText + '\r\n';
+        }
+        return output;
+    }
+
+    private async _recreateRustlingsOutput(): Promise<string> {
+        // Or at least... approximate
+        if (this.success === undefined || this.done === undefined) {
+            return `Checking exercise ${this.name}...`;
+        }
+        const stdout = this.runStdout?.split(/\r?\n/).filter((line) =>
+            line.search('Successfully ran ') === -1
+        ).map((line) => {
+            if (line.search(/(Test|Compil)(ing|ation) of .* failed!/) !== -1) {
+                return red(line);
+            }
+            return line;
+        }).join('\r\n');
+        const stderr = this.runStderr?.replace(/\n/g, '\r\n');
+        if (!this.success) {
+            return stdout + `\r\n` + stderr;
+        }
+        let part1;
+        let part2;
+        switch (this.mode) {
+            case 'compile':
+                part1 = `Successfully ran ${this.name}!`;
+                part2 = 'The code is compiling!';
+                break;
+            case 'test':
+                part1 = `Successfully tested ${this.name}!`;
+                part2 = 'The code is compiling, and the tests pass!';
+                break;
+            case 'clippy':
+                part1 = `Successfully compiled ${this.name}!`;
+                part2 = `The code is compiling, and 📎 Clippy 📎 is happy!`;
+                break;
+            default:
+                part1 = '';
+                part2 = `Please report a bug in the Rustlings Helper VSCode extension: unknown mode ${this.mode}`;
+        }
+        part1 = green('✅ ' + part1);
+        let output = part1 + '\r\n🎉 🎉  ' + part2 + ' 🎉 🎉\r\n\r\n';
+        const separator = bold('====================\r\n');
+        if (stdout !== undefined && stdout !== '') {
+            output += 'Output:\r\n';
+            output += separator;
+            output += stdout + '\r\n';
+            if (stderr !== undefined && stderr !== '') {
+                output += stderr + '\r\n';
+            }
+            output += separator + '\r\n';
+        }
+        if (!this.done) {
+            output += 'You can keep working on this exercise,\r\n'
+                + `or jump into the next one by removing the ${bold('I AM NOT DONE')} comment.\r\n\r\n`;
+            output += await this._getNotDoneWithContext();
+        }
+        return output;
+    }
+
     public async printRunOutput() {
         if (this.runStdout === undefined && this.runStderr === undefined) {
             return;
@@ -134,15 +223,18 @@ export class Exercise {
         if (pty === undefined) {
             return;
         }
+        if (this.done === undefined || this.success === undefined) {
+            return;
+        }
         pty.show();
+        while (vscode.window.activeTerminal !== this.rustlingsFolder?.terminal) {
+            await timeoutPromise(100);
+        }
+        // Clear the terminal with RIS (full reset)
+        pty.write('\x1bc');
+        pty.write(await this._recreateRustlingsOutput());
+        await timeoutPromise(100);
         await vscode.commands.executeCommand(
-            'workbench.action.terminal.clear'
-        );
-        let output = this.runStdout ?? '' + this.runStderr ?? '';
-        output = output.replace(/\n/g, '\r\n');
-        pty.write(output);
-        pty.show();
-        vscode.commands.executeCommand(
             'workbench.action.terminal.scrollToTop'
         );
     }
