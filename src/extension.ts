@@ -36,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(watcher);
     context.subscriptions.push(
         watcher.onDidChange((uri) => {
-            treeProvider.fileChanged(uri);
+            treeProvider.queueExerciseRunByUri(uri);
         })
     );
 
@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     // Since we should only activate if there's a Rustlings folder, kick off the
     // Watch automatically.
-    await treeProvider.rustlingsWatch();
+    treeProvider.rustlingsWatch();
 
     // check active editor when it changes
     context.subscriptions.push(

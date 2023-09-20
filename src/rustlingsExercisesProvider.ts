@@ -9,10 +9,10 @@ import {
 } from './exercise';
 import { RustlingsFolder } from './rustlingsFolder';
 
-function iconForSuccessState(success?: boolean): vscode.ThemeIcon {
+function iconForSuccessState(success?: boolean): vscode.ThemeIcon | undefined {
     switch (success) {
         case true:
-            return new vscode.ThemeIcon('thumbsup');
+            return undefined;
         case false:
             return new vscode.ThemeIcon('warning');
         case undefined:
@@ -40,11 +40,13 @@ export class RustlingsExercisesProvider
         new vscode.EventEmitter<ExerciseTreeItem | undefined>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    private _view?: vscode.TreeView<ExerciseTreeItem>;
+    public treeView?: vscode.TreeView<ExerciseTreeItem>;
 
     private _rustlingsFolders: RustlingsFolder[] = [];
 
     private _watchTerminal: vscode.Terminal | undefined = undefined;
+
+    private _runQueue: Exercise[] = [];
 
     constructor() {
     }
@@ -54,8 +56,8 @@ export class RustlingsExercisesProvider
     }
 
     setView(treeView: vscode.TreeView<ExerciseTreeItem>) {
-        this._view = treeView;
-        this._view.onDidChangeCheckboxState(
+        this.treeView = treeView;
+        this.treeView.onDidChangeCheckboxState(
             (event) => {
                 event.items.forEach(async (item) => {
                     let [treeItem, state] = item;
@@ -205,11 +207,11 @@ export class RustlingsExercisesProvider
                     exercises: await this._getExercises(folder)
                 };
             });
-            assert(this._view !== undefined);
+            assert(this.treeView !== undefined);
             this._rustlingsFolders = (await Promise.all(foldersPromises))
                 .filter((rustlings) => rustlings.exercises.length > 0)
                 .map((rustlings) => new RustlingsFolder(
-                    this._view!,
+                    this,
                     this._onDidChangeTreeData,
                     rustlings.folder,
                     rustlings.exercises
@@ -225,7 +227,7 @@ export class RustlingsExercisesProvider
         );
         this._onDidChangeTreeData.fire(undefined);
         this._rustlingsFolders.forEach(
-            (rustlings) => rustlings.checkStatus()
+            (rustlings) => rustlings.queueExerciseRuns()
         );
     }
 
@@ -317,8 +319,9 @@ export class RustlingsExercisesProvider
                 if (this.exercise.done) {
                     this.label = '$(check) ' + this.label;
                 }
-                this.label = iconForSuccessState(this.exercise.success).id
-                    + ' ' + this.label;
+                if (this.exercise.success === false) {
+                    this.label = '$(warning) ' + this.label;
+                }
                 if (showRoot) {
                     this.description = exercise.rootFolder.uri.toString();
                 }
@@ -344,34 +347,37 @@ export class RustlingsExercisesProvider
         vscode.commands.executeCommand('vscode.open', exercise.uri);
     }
 
-    public async fileChanged(uri: Uri): Promise<void> {
+    public async queueExerciseRun(exercise: Exercise, priority?: boolean): Promise<void> {
+        let length;
+        if (priority) {
+            length = this._runQueue.unshift(exercise);
+        } else {
+            length = this._runQueue.push(exercise);
+        }
+        if (length > 1) {
+            // I'm pretty sure this works
+            return;
+        }
+        // Use setTime to give other parts a chance to add to the queue or
+        // update the UI
+        const runQueue = this._runQueue;
+        setTimeout(async function runFirstExercise() {
+            const exercise = runQueue.shift();
+            if (exercise === undefined) {
+                return;
+            }
+            await exercise.run();
+            setTimeout(runFirstExercise);            
+        });
+    }
+
+    public async queueExerciseRunByUri(uri: Uri): Promise<void> {
         const exercise = this.exerciseByUri(uri);
         if (exercise === undefined) {
             // If it's not an exercise, we don't care
             return;
         }
-        const previousSuccess = exercise.success;
-        const previousDone = exercise.done;
-        exercise.success = undefined;
-        exercise.done = undefined;
-        exercise.treeItem?.update();
-        // Hoping that this actually doesn't block the event loop
-        const text = await readTextFile(uri);
-        exercise.done = text.match(Exercise.iAmNotDoneRegex) === null;
-        exercise.treeItem?.update();
-        const success = await exercise.run();
-        const activeEditor = vscode.window.activeTextEditor;
-        if (!(activeEditor?.document.uri.toString() === uri.toString())) {
-            // If the active editor isn't looking at the file that changed,
-            // don't do anything else.
-            return;
-        }
-        if (success && exercise.done && (!previousSuccess || !previousDone)) {
-            vscode.window.showInformationMessage(
-                'You finished ' + exercise.name + '!'
-            );
-            this.openNextExercise(exercise, activeEditor);
-        }
+        this.queueExerciseRun(exercise);
     }
 
     public async checkActiveEditor(
@@ -388,7 +394,7 @@ export class RustlingsExercisesProvider
         if (exercise === undefined) {
             return;
         }
-        this._view?.reveal(exercise.treeItem!, { select: true });
+        this.treeView?.reveal(exercise.treeItem!, { select: true });
         exercise.run();
         await exercise.printRunOutput();
 
@@ -592,7 +598,7 @@ class ExerciseTreeBranch extends vscode.TreeItem {
 }
 export class ExerciseTree extends ExerciseTreeBranch {
     constructor(
-        private _treeView: vscode.TreeView<ExerciseTreeItem>,
+        private _provider: RustlingsExercisesProvider,
         _onDidChangeTreeData: vscode.EventEmitter<ExerciseTreeItem | undefined>,
         folderName: string,
         exercises: Exercise[]
@@ -618,9 +624,9 @@ export class ExerciseTree extends ExerciseTreeBranch {
     public override update(): void {
         this.checkChildren();
         if (this.done && this.success) {
-            this._treeView.message = "You have finished all the exercises!";
+            this._provider.treeView!.message = "You have finished all the exercises!";
         } else {
-            this._treeView.message = undefined;
+            this._provider.treeView!.message = undefined;
         }
     }
 }

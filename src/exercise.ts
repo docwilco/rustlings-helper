@@ -111,6 +111,24 @@ export class Exercise {
     }
 
     public async run(): Promise<boolean> {
+        const previousSuccess = this.success;
+        const previousDone = this.done;
+        this.success = undefined;
+        this.done = undefined;
+        this.treeItem?.update();
+
+        try {
+            const text = await readTextFile(this.uri);
+            this.done = text.match(Exercise.iAmNotDoneRegex) === null;
+        } catch (error) {
+            // If we can't read the file, we can't run it
+            this.success = false;
+            this.done = false;
+            this.treeItem?.update();
+            return false;
+        }
+        this.treeItem?.update();
+
         const cwd = this.rootFolder.uri.fsPath;
         const command = 'rustlings run ' + this.name;
         await execAsync(
@@ -125,10 +143,18 @@ export class Exercise {
             this.runStderr = error.stderr;
             this.success = false;
         });
-
         this.treeItem?.update();
-        if (vscode.window.activeTextEditor?.document.uri.toString() === this.uri.toString()) {
-            this.printRunOutput();
+
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor?.document.uri.toString() !== this.uri.toString()) {
+            return this.success === true;
+        }
+        this.printRunOutput();
+        if (this.success && this.done && (!previousSuccess || !previousDone)) {
+            vscode.window.showInformationMessage(
+                'You finished ' + this.name + '!'
+            );
+            this.rustlingsFolder!.provider.openNextExercise(this, activeEditor);
         }
         return this.success === true;
     }
@@ -168,6 +194,9 @@ export class Exercise {
             line.search('Successfully ran ') === -1
         ).map((line) => {
             if (line.search(/(Test|Compil)(ing|ation) of .* failed!/) !== -1) {
+                return red(line);
+            }
+            if (line.search(/Ran .* with errors/) !== -1) {
                 return red(line);
             }
             return line;
