@@ -153,7 +153,6 @@ export class RustlingsExercisesProvider
             .find((exercise) => exercise !== undefined);
     }
 
-
     private _getNextExercise(currentExercise?: Exercise): Exercise | undefined {
         let rustlings;
         if (currentExercise === undefined) {
@@ -233,7 +232,7 @@ export class RustlingsExercisesProvider
 
     getChildren(
         branch?: ExerciseTreeBranch
-    ): (ExerciseTreeBranch | ExerciseTreeLeaf)[] | undefined {
+    ): ExerciseTreeItem[] | undefined {
         if (branch === undefined) {
             return this._rustlingsFolders.map(
                 (rustlings) => rustlings.exercisesTree
@@ -367,7 +366,7 @@ export class RustlingsExercisesProvider
                 return;
             }
             await exercise.run();
-            setTimeout(runFirstExercise);            
+            setTimeout(runFirstExercise);
         });
     }
 
@@ -454,17 +453,44 @@ export class RustlingsExercisesProvider
     }
 }
 
-export class ExerciseTreeLeaf extends vscode.TreeItem {
-    success?: boolean;
-    done?: boolean;
+export abstract class ExerciseTreeItem extends vscode.TreeItem {
+    public success?: boolean;
+    public done?: boolean;
+
     constructor(
-        private _onDidChangeTreeData:
+        protected onDidChangeTreeData:
             vscode.EventEmitter<ExerciseTreeItem | undefined>,
-        public readonly parent: ExerciseTreeBranch,
+        public readonly parent: ExerciseTreeBranch | undefined,
+        label: string | vscode.TreeItemLabel,
+        collapsibleState?: vscode.TreeItemCollapsibleState,
+    ) {
+        super(label, collapsibleState);
+    }
+
+    public abstract markDone(done: boolean): void;
+
+    public update() {
+        const oldIconPath = this.iconPath;
+        const oldCheckboxState = this.checkboxState;
+        this.iconPath = iconForSuccessState(this.success);
+        this.checkboxState = checkboxStateForDoneState(this.done);
+        if (oldIconPath !== this.iconPath
+            || oldCheckboxState !== this.checkboxState) {
+            this.onDidChangeTreeData.fire(this);
+            this.parent?.update();
+        }
+    }
+}
+
+export class ExerciseTreeLeaf extends ExerciseTreeItem {
+    constructor(
+        emitter:
+            vscode.EventEmitter<ExerciseTreeItem | undefined>,
+        parent: ExerciseTreeBranch,
         public readonly pathElement: string,
         public readonly exercise: Exercise
     ) {
-        super(exercise.name);
+        super(emitter, parent, exercise.name);
         exercise.treeItem = this;
         this.success = exercise.success;
         this.done = exercise.done;
@@ -476,18 +502,10 @@ export class ExerciseTreeLeaf extends vscode.TreeItem {
         this.update();
     }
 
-    public update() {
-        const oldIconPath = this.iconPath;
-        const oldCheckboxState = this.checkboxState;
-        this.iconPath = iconForSuccessState(this.exercise.success);
-        this.checkboxState = checkboxStateForDoneState(this.exercise.done);
+    public override update() {
         this.success = this.exercise.success;
         this.done = this.exercise.done;
-        if (oldIconPath !== this.iconPath
-            || oldCheckboxState !== this.checkboxState) {
-            this._onDidChangeTreeData.fire(this);
-        }
-        this.parent.update();
+        super.update();
     }
 
     public markDone(done: boolean) {
@@ -500,14 +518,12 @@ export class ExerciseTreeLeaf extends vscode.TreeItem {
     }
 }
 
-class ExerciseTreeBranch extends vscode.TreeItem {
-    children: (ExerciseTreeBranch | ExerciseTreeLeaf)[] = [];
-    success?: boolean;
-    done?: boolean;
+class ExerciseTreeBranch extends ExerciseTreeItem {
+    children: ExerciseTreeItem[] = [];
     constructor(
-        private _onDidChangeTreeData:
+        emitter:
             vscode.EventEmitter<ExerciseTreeItem | undefined>,
-        public readonly parent: ExerciseTreeBranch | undefined,
+        parent: ExerciseTreeBranch | undefined,
         public readonly pathElement: string | undefined,
         label?: string
     ) {
@@ -515,6 +531,8 @@ class ExerciseTreeBranch extends vscode.TreeItem {
             pathElement = '';
         }
         super(
+            emitter,
+            parent,
             // strip trailing slash
             label ?? pathElement?.slice(0, -1),
             vscode.TreeItemCollapsibleState.Collapsed
@@ -528,7 +546,7 @@ class ExerciseTreeBranch extends vscode.TreeItem {
         } else if (pathElements.length === 1) {
             this.children.push(
                 new ExerciseTreeLeaf(
-                    this._onDidChangeTreeData,
+                    this.onDidChangeTreeData,
                     this,
                     pathElements[0]!,
                     exercise
@@ -542,7 +560,7 @@ class ExerciseTreeBranch extends vscode.TreeItem {
             }) as ExerciseTreeBranch | undefined;
             if (branch === undefined) {
                 branch = new ExerciseTreeBranch(
-                    this._onDidChangeTreeData,
+                    this.onDidChangeTreeData,
                     this,
                     section!);
                 this.children.push(branch);
@@ -576,7 +594,7 @@ class ExerciseTreeBranch extends vscode.TreeItem {
         this.done = done;
     }
 
-    public update() {
+    public override update() {
         this.checkChildren();
         const oldIconPath = this.iconPath;
         const oldCheckboxState = this.checkboxState;
@@ -584,9 +602,9 @@ class ExerciseTreeBranch extends vscode.TreeItem {
         this.checkboxState = checkboxStateForDoneState(this.done);
         if (oldIconPath !== this.iconPath
             || oldCheckboxState !== this.checkboxState) {
-            this._onDidChangeTreeData.fire(this);
+            this.onDidChangeTreeData.fire(this);
+            this.parent?.update();
         }
-        this.parent?.update();
     }
 
     public markDone(done: boolean) {
@@ -630,6 +648,3 @@ export class ExerciseTree extends ExerciseTreeBranch {
         }
     }
 }
-
-export type ExerciseTreeItem = ExerciseTreeBranch | ExerciseTreeLeaf;
-
