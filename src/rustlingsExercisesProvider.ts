@@ -8,6 +8,10 @@ import {
     readTextFile,
 } from './exercise';
 import { RustlingsFolder } from './rustlingsFolder';
+import { promisify } from 'util';
+import { showWizardForExercise } from './wizardSteps';
+
+const timeoutPromise = promisify(setTimeout);
 
 function iconForSuccessState(success?: boolean): vscode.ThemeIcon | undefined {
     switch (success) {
@@ -57,15 +61,18 @@ export class RustlingsExercisesProvider
 
     setView(treeView: vscode.TreeView<ExerciseTreeItem>) {
         this.treeView = treeView;
-        this.treeView.onDidChangeCheckboxState(
-            (event) => {
-                event.items.forEach(async (item) => {
-                    let [treeItem, state] = item;
-                    treeItem.markDone(
-                        state === vscode.TreeItemCheckboxState.Checked
-                    );
-                });
-            }
+        this.treeView.onDidChangeCheckboxState(this._onDidChangeCheckboxState);
+    }
+
+    private _onDidChangeCheckboxState(
+        event: vscode.TreeCheckboxChangeEvent<ExerciseTreeItem>
+    ) {
+        // As far as I'm aware, the first item is the item that was clicked on,
+        // the rest are the items that VSCode thinks should be affected by that.
+        // Only do the first one, the rest is handled by that item's update()
+        let [firstTreeItem, firstCheckBoxState] = event.items[0]!;
+        firstTreeItem.markDone(
+            firstCheckBoxState === vscode.TreeItemCheckboxState.Checked
         );
     }
 
@@ -153,7 +160,7 @@ export class RustlingsExercisesProvider
             .find((exercise) => exercise !== undefined);
     }
 
-    private _getNextExercise(currentExercise?: Exercise): Exercise | undefined {
+    private async _getNextExercise(currentExercise?: Exercise): Promise<Exercise | undefined> {
         let rustlings;
         if (currentExercise === undefined) {
             const currentUri = vscode.window.activeTextEditor?.document.uri;
@@ -168,15 +175,25 @@ export class RustlingsExercisesProvider
             );
             let index = rustlings?.exercises.indexOf(currentExercise);
             if (index !== undefined && index >= 0) {
-                // Make a new array starting at the current exercise
-                let potentialNext = rustlings!.exercises.slice(index);
-                potentialNext = potentialNext.concat(rustlings!.exercises.slice(0, index));
-                // Take out current exercise using shift, so we don't have to
-                // bounds check the index in the lines above.
-                potentialNext.shift();
-                return potentialNext.find(
-                    (exercise) => !exercise.done || !exercise.success
-                );
+                // Make a new array starting after the current exercise,
+                // containing everything except the current exercise.
+                // `index + 1` is safe to use, because even if index is pointing
+                // at the last element, slice will just return an empty array
+                let candidates = rustlings!.exercises.slice(index + 1);
+                candidates = candidates.concat(rustlings!.exercises.slice(0, index));
+                let potentialNext;
+                while (true) {
+                    potentialNext = candidates.find(
+                        (exercise) => !exercise.done || !exercise.success
+                    );
+                    if (potentialNext === undefined) {
+                        return undefined;
+                    }
+                    if (potentialNext.done !== undefined && potentialNext.success !== undefined) {
+                        return potentialNext;
+                    }
+                    await timeoutPromise(100);
+                }
             }
         }
         if (rustlings === undefined) {
@@ -228,6 +245,19 @@ export class RustlingsExercisesProvider
         this._rustlingsFolders.forEach(
             (rustlings) => rustlings.queueExerciseRuns()
         );
+        this._checkExerciseOpen();
+        this._rustlingsFolders.forEach((rustlings) => {
+            rustlings.setupLSP();
+        }
+    }
+
+    private _checkExerciseOpen() {
+        const editor = vscode.window.visibleTextEditors.find((editor) =>
+            this.exerciseByUri(editor.document.uri) !== undefined
+        );
+        if (editor === undefined) {
+            this.openNextExercise();
+        }
     }
 
     getChildren(
@@ -249,8 +279,12 @@ export class RustlingsExercisesProvider
         return item;
     }
 
-    rustlingsWatch() {
+    async rustlingsWatch(tree?: vscode.TreeItem) {
         if (this._rustlingsFolders.length === 0) {
+            return;
+        }
+        if (tree instanceof ExerciseTree) {
+            tree.rustlings.watch();
             return;
         }
         this._rustlingsFolders.forEach((rustlings) => rustlings.watch());
@@ -264,20 +298,21 @@ export class RustlingsExercisesProvider
     }
 
     activeTerminalChanged(terminal: vscode.Terminal | undefined) {
-        const watching = terminal !== undefined
-            && terminal === this._watchTerminal;
-        vscode.commands.executeCommand(
-            'setContext',
-            'rustlingsHelper:watching',
-            watching
-        );
+        this._rustlingsFolders.forEach((rustlings) => {
+            if (rustlings.terminal === terminal) {
+                rustlings.exercisesTree.contextValue = 'rustlingsTreeWatching';
+            } else {
+                rustlings.exercisesTree.contextValue = 'rustlingsTreeNotWatching';
+            }
+            rustlings.exercisesTree.update();
+        });
     }
 
     public async openNextExercise(
         currentExercise?: Exercise,
         currentEditor?: vscode.TextEditor
     ) {
-        const nextExercise = this._getNextExercise(currentExercise);
+        const nextExercise = await this._getNextExercise(currentExercise);
         if (nextExercise === undefined) {
             vscode.window.showInformationMessage(
                 'You finished all the exercises!'
@@ -353,7 +388,11 @@ export class RustlingsExercisesProvider
         } else {
             length = this._runQueue.push(exercise);
         }
-        if (length > 1) {
+        exercise.done = undefined;
+        exercise.success = undefined;
+        exercise.treeItem?.update();
+        // Doing two at a time seems reasonable
+        if (length > 2) {
             // I'm pretty sure this works
             return;
         }
@@ -394,48 +433,32 @@ export class RustlingsExercisesProvider
             return;
         }
         this.treeView?.reveal(exercise.treeItem!, { select: true });
-        exercise.run();
+        await exercise.run();
         await exercise.printRunOutput();
-
-        if (exercise.name === 'intro1' && !exercise.done) {
-            const message1 = 'Welcome to the Rustlings Helper extension! '
-                + 'Please read the comments in intro1.rs before continuing, '
-                + 'but do not make any changes yet. Press Next when you are '
-                + 'done reading.';
-            await vscode.window.showInformationMessage(
-                message1,
-                'Next'
-            );
-            const message2 = 'This extension can remove the "I AM NOT DONE" '
-                + 'comment from the current exercise using the checkbox in the '
-                + '[Exercises](command:rustlingsHelper.exercisesView.focus) '
-                + 'view, or by using the [Rustlings Helper: Toggle Done]'
-                + '(command:rustlingsHelper.toggleDone) command.';
-            const button2 = await vscode.window.showInformationMessage(
-                message2,
-                'Mark as done now',
-                'Dismiss'
-            );
-            if (button2 === 'Mark as done now') {
-                exercise.markDone(true);
-            }
-        }
     }
 
-    public async toggleDone() {
-        const editor = vscode.window.activeTextEditor;
-        if (editor === undefined) {
-            return;
+    public async toggleDone(treeItem: vscode.TreeItem) {
+        let exercise: Exercise | undefined;
+        if (treeItem === undefined) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor === undefined) {
+                return;
+            }
+            const document = editor.document;
+            exercise = this.exerciseByUri(document.uri);
+            if (exercise === undefined) {
+                vscode.window.showErrorMessage(
+                    'This file is not part of a rustlings exercise'
+                );
+                return;
+            }
+            exercise.markDone(!exercise.done);
+        } else if (treeItem instanceof ExerciseTreeLeaf) {
+            exercise = treeItem.exercise;
+            exercise.markDone(!exercise.done);
+        } else if (treeItem instanceof ExerciseTreeBranch) {
+            treeItem.markDone(!treeItem.done);
         }
-        const document = editor.document;
-        const exercise = this.exerciseByUri(document.uri);
-        if (exercise === undefined) {
-            vscode.window.showErrorMessage(
-                'This file is not part of a rustlings exercise'
-            );
-            return;
-        }
-        exercise.markDone(!exercise.done);
     }
 
     async showHint() {
@@ -499,6 +522,7 @@ export class ExerciseTreeLeaf extends ExerciseTreeItem {
             title: 'Open Exercise',
             arguments: [exercise.uri]
         };
+        this.contextValue = 'exercise';
         this.update();
     }
 
@@ -537,7 +561,8 @@ class ExerciseTreeBranch extends ExerciseTreeItem {
             label ?? pathElement?.slice(0, -1),
             vscode.TreeItemCollapsibleState.Collapsed
         );
-        this.iconPath = new vscode.ThemeIcon('folder');
+        // this.iconPath = new vscode.ThemeIcon('folder');
+        this.contextValue = 'section';
     }
 
     addExercise(pathElements: string[], exercise: Exercise) {
@@ -596,15 +621,7 @@ class ExerciseTreeBranch extends ExerciseTreeItem {
 
     public override update() {
         this.checkChildren();
-        const oldIconPath = this.iconPath;
-        const oldCheckboxState = this.checkboxState;
-        this.iconPath = iconForSuccessState(this.success);
-        this.checkboxState = checkboxStateForDoneState(this.done);
-        if (oldIconPath !== this.iconPath
-            || oldCheckboxState !== this.checkboxState) {
-            this.onDidChangeTreeData.fire(this);
-            this.parent?.update();
-        }
+        super.update();
     }
 
     public markDone(done: boolean) {
@@ -615,13 +632,15 @@ class ExerciseTreeBranch extends ExerciseTreeItem {
 
 }
 export class ExerciseTree extends ExerciseTreeBranch {
+    public loaded = false;
     constructor(
-        private _provider: RustlingsExercisesProvider,
+        public rustlings: RustlingsFolder,
         _onDidChangeTreeData: vscode.EventEmitter<ExerciseTreeItem | undefined>,
         folderName: string,
         exercises: Exercise[]
     ) {
         super(_onDidChangeTreeData, undefined, undefined, folderName);
+        this.contextValue = 'rustlings';
         this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
         exercises.forEach((exercise) => {
             // Split into ['exercises/', '<section>/', '<exercise>']
@@ -637,14 +656,23 @@ export class ExerciseTree extends ExerciseTreeBranch {
             }
             this.addExercise(pathElements, exercise);
         });
+        this.loaded = true;
     }
 
     public override update(): void {
-        this.checkChildren();
-        if (this.done && this.success) {
-            this._provider.treeView!.message = "You have finished all the exercises!";
-        } else {
-            this._provider.treeView!.message = undefined;
+        if (!this.loaded) {
+            return;
         }
+        this.checkChildren();
+        if (this.done === true && this.success === true) {
+            this.rustlings.provider.treeView!.message = "You have finished all the exercises!";
+            vscode.window.showInformationMessage(
+                "Congratulations! You have finished all the exercises!",
+                "Dismiss"
+            );
+        } else {
+            this.rustlings.provider.treeView!.message = undefined;
+        }
+        this.onDidChangeTreeData.fire(this);
     }
 }

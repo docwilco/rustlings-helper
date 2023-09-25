@@ -69,14 +69,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.watch', async () => {
-            await treeProvider.rustlingsWatch();
-        })
+        vscode.commands.registerCommand(
+            'rustlingsHelper.watch',
+            async (treeItem: vscode.TreeItem) => {
+                await treeProvider.rustlingsWatch(treeItem);
+            }
+        )
     );
     context.subscriptions.push(
-        vscode.commands.registerCommand('rustlingsHelper.toggleDone', () => {
-            treeProvider.toggleDone();
-        })
+        vscode.commands.registerCommand(
+            'rustlingsHelper.toggleDone', (treeItem: vscode.TreeItem) => {
+                treeProvider.toggleDone(treeItem);
+            }
+        )
     );
     context.subscriptions.push(
         vscode.commands.registerCommand(
@@ -108,6 +113,8 @@ export async function activate(context: vscode.ExtensionContext) {
             );
         })
     );
+
+
 }
 
 // This method is called when your extension is deactivated

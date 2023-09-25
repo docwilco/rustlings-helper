@@ -165,13 +165,13 @@ export class RustlingsMarkdownPanel {
                         <vscode-panel-view id="readme-view">
                             <div id="readme-visible" hidden>
                                 <vscode-button id="hide-readme-button">
-                                    Hide Readme
+                                    Hide README
                                 </vscode-button>
                                 <div id="readme"></div>
                             </div>
                             <div id="readme-hidden">
                                 <vscode-button id="show-readme-button">
-                                    Show Readme
+                                    Show README
                                 </vscode-button>
                             </div>
                         </vscode-panel-view>

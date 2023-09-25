@@ -17,7 +17,7 @@ export class RustlingsFolder {
             exercise.rustlingsFolder = this;
         });
         this.exercisesTree = new ExerciseTree(
-            this.provider,
+            this,
             onDidChangeTreeData,
             folder.name,
             exercises
@@ -39,11 +39,14 @@ export class RustlingsFolder {
         }
         if (this.terminal === undefined) {
             this.terminal = vscode.window.createTerminal({
-                name: `Rustlings: ${this.folder.name}`,
+                name: `Rustlings Watch: ${this.folder.name}`,
                 pty: this.pty,
             });
         }
         this.terminal.show(true);
+    }
+
+    public async setupLSP() {
     }
 }
 
@@ -64,6 +67,10 @@ class RustlingsPty implements vscode.Pseudoterminal {
 
     public close(): void {
         this._isOpen = false;
+        this._folder.terminal?.dispose();
+        this._folder.terminal = undefined;
+        this._folder.pty = undefined;
+        this.closeEmitter.fire(0);
     }
 
     public write(data: string): void {

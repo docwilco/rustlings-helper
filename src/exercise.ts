@@ -6,6 +6,7 @@ import { RustlingsFolder } from './rustlingsFolder';
 import * as child_process from 'child_process';
 import { promisify } from 'util';
 import { Chalk } from 'chalk';
+import { showWizardForExercise } from './wizardSteps';
 
 const chalk = new Chalk({ level: 1 });
 const red = chalk.red;
@@ -110,7 +111,7 @@ export class Exercise {
         this.treeItem?.update();
     }
 
-    public async run(): Promise<boolean> {
+    public async run() {
         const previousSuccess = this.success;
         const previousDone = this.done;
         this.success = undefined;
@@ -147,16 +148,17 @@ export class Exercise {
 
         const activeEditor = vscode.window.activeTextEditor;
         if (activeEditor?.document.uri.toString() !== this.uri.toString()) {
-            return this.success === true;
+            return;
         }
         this.printRunOutput();
+        await showWizardForExercise(this);
+
         if (this.success && this.done && (!previousSuccess || !previousDone)) {
             vscode.window.showInformationMessage(
                 'You finished ' + this.name + '!'
             );
             this.rustlingsFolder!.provider.openNextExercise(this, activeEditor);
         }
-        return this.success === true;
     }
 
     private async _getNotDoneWithContext(): Promise<string> {
