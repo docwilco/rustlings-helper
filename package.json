@@ -2,14 +2,37 @@
     "name": "rustlings-helper",
     "displayName": "Rustlings Helper",
     "publisher": "drwilco",
-    "description": "Go through Rustlings exercises quicker",
-    "version": "0.0.1",
+    "description": "A helper extension for the Rustlings exercises. It doesn't do the exercises for you, it does everything the Rustlings CLI does but inside the VSCode IDE. And plenty more!",
+    "preview": true,
+    "icon": "media/rustlings.png",
+    "version": "0.1.0",
+    "license": "SEE LICENSE IN LICENSE.md",
+    "pricing": "Free",
+    "homepage": "https://github.com/docwilco/rustlings-helper",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/docwilco/rustlings-helper.git"
+    },
+    "bugs": {
+        "url": "https://github.com/docwilco/rustlings-helper/issues"
+    },
+    "categories": [
+        "Programming Languages",
+        "Other"
+    ],
+    "keywords": [
+        "Rust",
+        "Rustlings",
+        "Exercises",
+        "Learning",
+        "Learning Rust"
+    ],
+    "extensionKind": [
+        "workspace"
+    ],
     "engines": {
         "vscode": "^1.82.0"
     },
-    "categories": [
-        "Other"
-    ],
     "activationEvents": [
         "workspaceContains:info.toml"
     ],
@@ -144,7 +167,7 @@
                         "type": "boolean",
                         "default": true,
                         "description": "Whether to show the walkthrough messages for the intro exercises."
-                    }    
+                    }
                 }
             },
             {
@@ -169,7 +192,7 @@
     "scripts": {
         "vscode:prepublish": "npm run package",
         "compile": "node ./esbuild.js",
-        "package": "NODE_ENV=production node ./esbuild.js",
+        "package": "cross-env NODE_ENV=production node ./esbuild.js",
         "watch": "node ./esbuild.js --watch",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint src --ext ts",
@@ -183,6 +206,7 @@
         "@typescript-eslint/eslint-plugin": "^6.4.1",
         "@typescript-eslint/parser": "^6.4.1",
         "@vscode/test-electron": "^2.3.4",
+        "cross-env": "^7.0.3",
         "esbuild": "^0.16.17",
         "eslint": "^8.47.0",
         "glob": "^10.3.3",

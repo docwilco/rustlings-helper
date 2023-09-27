@@ -1,31 +1,37 @@
-# rustlings-helper README
+# Rustlings Helper
 
-This is the README for your extension "rustlings-helper". After writing up a brief description, we recommend including the following sections.
+A helper extension for the Rustlings exercises. It doesn't do the exercises for you, it does everything the Rustlings CLI does but inside the VSCode IDE. And plenty more!
+
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+* Shows the equivalent of `rustlings watch` in the VSCode terminal.
+  ![Watch Terminal](media/watch-terminal.png)
+* Always shows the output for the exercise you have open.
+* Updates the output if the file you have open changes for any reason.
+* Automatically opens the next exercise when the current one compiles, runs, and passes tests and is marked as done.
+* Can show the provided hint for the exercises.
+* Can show the README for the sections of exercises.
+* Hotkey for marking an exercise as done or not done. (`Ctrl+Alt+D` or `Ctrl+Cmd+D`)
+* Shows a tree view of the exercises, with their status. 
+  ![Tree View](media/tree-view.png)
+  
+  The checkbox indicates whether or not an exercise is marked as done. The warning icon means that the exercise does not compile, run, or pass tests. You can use the section checkboxes to mark/unmark an entire section in one go.
 
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+  The status is always updated when the exercises' files change, even if not open in an editor.
+* Button and command (not bound to a hotkey by default) to reset an exercise to its initial state. This uses the `rustlings reset` command, which in turn uses `git stash`. You'll be able to recover your work from git stashes.
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+You need to have [Rustlings installed](https://github.com/rust-lang/rustlings#getting-started). 
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
 This extension contributes the following settings:
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+* `rustlingsHelper.showWalkthrough`: Whether to show the walkthrough messages for the `intro` exercises.
+* `rustlingsHelper.startup.setupLSP `: Whether to create the `rust-project.json` file on startup if it doesn't exist yet. This file allows for instance [Rust Analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) to be used for the exercises. However, if you want to work on the source for Rustlings itself, you should either disable this setting or this extension as a whole.
+* `rustlingsHelper.startup.startWatch`: Whether to show the built-in watch terminal on startup. This extension emulates the output of `rustlings watch` in the terminal, but it can be disabled here if you prefer to use the real `rustlings watch` command instead.
 
 ## Known Issues
 
@@ -35,37 +41,6 @@ Calling out known issues can help limit users opening duplicate issues against y
 
 Users appreciate release notes as you update your extension.
 
-### 1.0.0
+### 0.1.0
 
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+Preview release of the Rustlings Helper extension.
