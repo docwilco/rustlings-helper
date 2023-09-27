@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { ExerciseTree, ExerciseTreeItem, RustlingsExercisesProvider } from './rustlingsExercisesProvider';
 import { Exercise } from './exercise';
+import * as child_process from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(child_process.exec);
 
 export class RustlingsFolder {
     public readonly exercisesUriMap: Map<string, Exercise>;
@@ -47,6 +51,59 @@ export class RustlingsFolder {
     }
 
     public async setupLSP() {
+        // Check whether rust-project.json exists at the root
+        const rustProjectUri = vscode.Uri.joinPath(
+            this.folder.uri,
+            'rust-project.json'
+        );
+        const rustProjectExists = await vscode.workspace.fs
+            .stat(rustProjectUri)
+            .then(
+                () => true,
+                () => false
+            );
+        if (rustProjectExists) {
+            return;
+        }
+        const rustlingsLSPRan = await execAsync('rustlings lsp', {
+            cwd: this.folder.uri.fsPath,
+        }).then(
+            (_) => true
+        ).catch((err) => {
+            vscode.window.showErrorMessage(err.message);
+            return false;
+        });
+        if (!rustlingsLSPRan) {
+            return;
+        }
+        // Restart rust-analyzer if it's installed
+        const rustAnalyzerExtension = vscode.extensions.getExtension(
+            'rust-lang.rust-analyzer'
+        );
+        if (rustAnalyzerExtension !== undefined) {
+            if (rustAnalyzerExtension.isActive) {
+                vscode.commands.executeCommand('rust-analyzer.restartServer');
+            }
+            // Hoping that rust-analyzer reads the new rust-project.json after
+            // activating, and not during. Otherwise we'll have to wait for the
+            // activation to complete and then restart it.
+            return;
+        }
+
+        const button = await vscode.window.showInformationMessage(
+            'You don\'t seem to have rust-analyzer installed. You can '
+            + 'either install it now, or manually restart your LSP server '
+            + 'of choice to enable LSP for Rustlings.',
+            'Install rust-analyzer',
+            'Dismiss'
+        );
+        if (button === 'Install rust-analyzer') {
+            vscode.commands.executeCommand(
+                'workbench.extensions.installExtension',
+                'rust-lang.rust-analyzer'
+            );
+        }
+        return;
     }
 }
 

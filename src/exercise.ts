@@ -6,7 +6,7 @@ import { RustlingsFolder } from './rustlingsFolder';
 import * as child_process from 'child_process';
 import { promisify } from 'util';
 import { Chalk } from 'chalk';
-import { showWizardForExercise } from './wizardSteps';
+import { showWalkthroughForExercise } from './walkthroughSteps';
 
 const chalk = new Chalk({ level: 1 });
 const red = chalk.red;
@@ -126,7 +126,7 @@ export class Exercise {
             this.success = false;
             this.done = false;
             this.treeItem?.update();
-            return false;
+            return;
         }
         this.treeItem?.update();
 
@@ -151,7 +151,7 @@ export class Exercise {
             return;
         }
         this.printRunOutput();
-        await showWizardForExercise(this);
+        await showWalkthroughForExercise(this);
 
         if (this.success && this.done && (!previousSuccess || !previousDone)) {
             vscode.window.showInformationMessage(
@@ -261,15 +261,21 @@ export class Exercise {
             return;
         }
         pty.show();
-        while (vscode.window.activeTerminal !== this.rustlingsFolder?.terminal) {
-            await timeoutPromise(100);
-        }
         // Clear the terminal with RIS (full reset)
         pty.write('\x1bc');
         pty.write(await this._recreateRustlingsOutput());
         await timeoutPromise(100);
         await vscode.commands.executeCommand(
             'workbench.action.terminal.scrollToTop'
+        );
+    }
+
+    public async reset() {
+        const cwd = this.rootFolder.uri.fsPath;
+        const command = 'rustlings reset ' + this.name;
+        return execAsync(
+            command,
+            { cwd: cwd }
         );
     }
 }

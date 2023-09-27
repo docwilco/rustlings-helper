@@ -51,9 +51,6 @@ export async function activate(context: vscode.ExtensionContext) {
             treeProvider.activeTerminalChanged(terminal);
         })
     );
-    // Since we should only activate if there's a Rustlings folder, kick off the
-    // Watch automatically.
-    treeProvider.rustlingsWatch();
 
     // check active editor when it changes
     context.subscriptions.push(
@@ -113,8 +110,23 @@ export async function activate(context: vscode.ExtensionContext) {
             );
         })
     );
-
-
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'rustlingsHelper.resetExercise', (treeItem) => {
+                treeProvider.resetExercise(treeItem);
+            }
+        )
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'rustlingsHelper.openSettings', () => {
+                vscode.commands.executeCommand(
+                    'workbench.action.openSettings',
+                    'rustlingsHelper'
+                );
+            }
+        )
+    );
 }
 
 // This method is called when your extension is deactivated

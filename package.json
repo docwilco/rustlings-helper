@@ -1,146 +1,199 @@
 {
-  "name": "rustlings-helper",
-  "displayName": "Rustlings Helper",
-  "publisher": "drwilco",
-  "description": "Go through Rustlings exercises quicker",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.82.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "workspaceContains:info.toml"
-  ],
-  "main": "./out/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "rustlingsHelper",
-          "title": "Rustlings Helper",
-          "icon": "media/rustlings.svg"
-        }
-      ]
+    "name": "rustlings-helper",
+    "displayName": "Rustlings Helper",
+    "publisher": "drwilco",
+    "description": "Go through Rustlings exercises quicker",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.82.0"
     },
-    "views": {
-      "rustlingsHelper": [
-        {
-          "id": "rustlingsHelper.exercisesView",
-          "type": "tree",
-          "name": "Exercises",
-          "icon": "media/rustlings.svg"
-        }
-      ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "rustlingsHelper.exercisesView",
-        "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
-        "when": "rustlingsHelper:hasRustlingsKnown && !rustlingsHelper:hasRustlings"
-      }
+    "categories": [
+        "Other"
     ],
-    "commands": [
-      {
-        "command": "rustlingsHelper.openNextExercise",
-        "title": "Open Next Exercise",
-        "when": "rustlingsHelper:hasRustlings",
-        "category": "Rustlings Helper"
-      },
-      {
-        "command": "rustlingsHelper.openExercise",
-        "title": "Open Exercise",
-        "when": "rustlingsHelper:hasRustlings",
-        "category": "Rustlings Helper"
-      },
-      {
-        "command": "rustlingsHelper.toggleDone",
-        "title": "Toggle Done on Exercise",
-        "when": "rustlingsHelper:exerciseOpen",
-        "category": "Rustlings Helper",
-        "icon": "$(check)"
-      },
-      {
-        "command": "rustlingsHelper.watch",
-        "title": "Open Watch terminal",
-        "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:watching",
-        "category": "Rustlings Helper",
-        "icon": "$(eye)"
-      },
-      {
-        "command": "rustlingsHelper.showHint",
-        "title": "Show Hint",
-        "when": "rustlingsHelper:exerciseOpen",
-        "category": "Rustlings Helper",
-        "icon": "$(question)"
-      },
-      {
-        "command": "rustlingsHelper.showReadme",
-        "title": "Open README for section",
-        "when": "rustlingsHelper:exerciseOpen",
-        "category": "Rustlings Helper",
-        "icon": "$(info)"
-      }
+    "activationEvents": [
+        "workspaceContains:info.toml"
     ],
-    "keybindings": [
-      {
-        "command": "rustlingsHelper.toggleDone",
-        "key": "ctrl+alt+d",
-        "mac": "ctrl+cmd+d",
-        "when": "rustlingsHelper:exerciseOpen"
-      }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "rustlingsHelper.showHint",
-          "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
-          "group": "navigation"
+    "main": "./out/extension.js",
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "rustlingsHelper",
+                    "title": "Rustlings Helper",
+                    "icon": "media/rustlings.svg"
+                }
+            ]
         },
-        {
-          "command": "rustlingsHelper.showReadme",
-          "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "rustlingsHelper.watch",
-          "when": "view == rustlingsHelper.exercisesView && viewItem == rustlingsTreeNotWatching",
-          "group": "inline"
-        }
-      ]
+        "views": {
+            "rustlingsHelper": [
+                {
+                    "id": "rustlingsHelper.exercisesView",
+                    "type": "tree",
+                    "name": "Exercises",
+                    "icon": "media/rustlings.svg"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "rustlingsHelper.exercisesView",
+                "contents": "No Rustlings exercises found in this workspace. Please open your rustlings folder.\n[Open Folder](command:vscode.openFolder)\nIf you don't have a Rustlings folder yet, please follow these instructions:\n[Install Rustlings](https://github.com/rust-lang/rustlings#getting-started)\n",
+                "when": "rustlingsHelper:hasRustlingsKnown && !rustlingsHelper:hasRustlings"
+            }
+        ],
+        "commands": [
+            {
+                "command": "rustlingsHelper.openNextExercise",
+                "title": "Open Next Exercise",
+                "when": "rustlingsHelper:hasRustlings",
+                "category": "Rustlings Helper"
+            },
+            {
+                "command": "rustlingsHelper.openExercise",
+                "title": "Open Exercise",
+                "when": "rustlingsHelper:hasRustlings",
+                "category": "Rustlings Helper"
+            },
+            {
+                "command": "rustlingsHelper.toggleDone",
+                "title": "Toggle Done on Exercise",
+                "when": "rustlingsHelper:exerciseOpen",
+                "category": "Rustlings Helper",
+                "icon": "$(check)"
+            },
+            {
+                "command": "rustlingsHelper.watch",
+                "title": "Open Watch terminal",
+                "when": "rustlingsHelper:hasRustlings && !rustlingsHelper:watching",
+                "category": "Rustlings Helper",
+                "icon": "$(eye)"
+            },
+            {
+                "command": "rustlingsHelper.showHint",
+                "title": "Show Hint",
+                "when": "rustlingsHelper:exerciseOpen",
+                "category": "Rustlings Helper",
+                "icon": "$(question)"
+            },
+            {
+                "command": "rustlingsHelper.showReadme",
+                "title": "Open README for section",
+                "when": "rustlingsHelper:exerciseOpen",
+                "category": "Rustlings Helper",
+                "icon": "$(info)"
+            },
+            {
+                "command": "rustlingsHelper.resetExercise",
+                "title": "Reset exercise to original state",
+                "when": "rustlingsHelper:exerciseOpen",
+                "category": "Rustlings Helper",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "rustlingsHelper.openSettings",
+                "title": "Open Settings",
+                "category": "Rustlings Helper",
+                "icon": "$(gear)"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "rustlingsHelper.toggleDone",
+                "key": "ctrl+alt+d",
+                "mac": "ctrl+cmd+d",
+                "when": "rustlingsHelper:exerciseOpen"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "rustlingsHelper.showHint",
+                    "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
+                    "group": "navigation"
+                },
+                {
+                    "command": "rustlingsHelper.showReadme",
+                    "when": "view == rustlingsHelper.exercisesView && rustlingsHelper:exerciseOpen",
+                    "group": "navigation"
+                },
+                {
+                    "command": "rustlingsHelper.openSettings",
+                    "when": "view == rustlingsHelper.exercisesView",
+                    "group": "navigation@3"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "rustlingsHelper.watch",
+                    "when": "view == rustlingsHelper.exercisesView && viewItem == rustlingsTreeNotWatching",
+                    "group": "inline"
+                },
+                {
+                    "command": "rustlingsHelper.resetExercise",
+                    "when": "view == rustlingsHelper.exercisesView && viewItem == exercise",
+                    "group": "inline"
+                }
+            ]
+        },
+        "configuration": [
+            {
+                "title": "Rustlings Helper",
+                "id": "rustlingsHelper",
+                "properties": {
+                    "rustlingsHelper.showWalkthrough": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Whether to show the walkthrough messages for the intro exercises."
+                    }    
+                }
+            },
+            {
+                "title": "Startup",
+                "id": "rustlingsHelper.startup",
+                "order": 1,
+                "properties": {
+                    "rustlingsHelper.startup.setupLSP": {
+                        "type": "boolean",
+                        "default": true,
+                        "markdownDescription": "Whether to create the `rust-project.json` file on startup if it doesn't exist yet. This file allows for instance [Rust Analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) to be used for the exercises. However, if you want to work on the source for Rustlings itself, you should either disable this setting or this extension as a whole."
+                    },
+                    "rustlingsHelper.startup.showWatchTerminal": {
+                        "type": "boolean",
+                        "default": true,
+                        "markdownDescription": "Whether to show the built-in watch terminal on startup. This extension emulates the output of `rustlings watch` in the terminal, but it can be disabled here if you prefer to use the real `rustlings watch` command instead."
+                    }
+                }
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run package",
+        "compile": "node ./esbuild.js",
+        "package": "NODE_ENV=production node ./esbuild.js",
+        "watch": "node ./esbuild.js --watch",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src --ext ts",
+        "test": "node ./out/test/runTest.js"
+    },
+    "devDependencies": {
+        "@types/mocha": "^10.0.1",
+        "@types/node": "16.x",
+        "@types/vscode": "^1.82.0",
+        "@types/vscode-webview": "^1.57.2",
+        "@typescript-eslint/eslint-plugin": "^6.4.1",
+        "@typescript-eslint/parser": "^6.4.1",
+        "@vscode/test-electron": "^2.3.4",
+        "esbuild": "^0.16.17",
+        "eslint": "^8.47.0",
+        "glob": "^10.3.3",
+        "mocha": "^10.2.0",
+        "typescript": "^5.1.6"
+    },
+    "dependencies": {
+        "@types/markdown-it": "^13.0.1",
+        "@vscode/webview-ui-toolkit": "^1.2.2",
+        "chalk": "^5.3.0",
+        "markdown-it": "^13.0.1",
+        "toml": "^3.0.0"
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "node ./esbuild.js",
-    "package": "NODE_ENV=production node ./esbuild.js",
-    "watch": "node ./esbuild.js --watch",
-    "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
-  },
-  "devDependencies": {
-    "@types/mocha": "^10.0.1",
-    "@types/node": "16.x",
-    "@types/vscode": "^1.82.0",
-    "@types/vscode-webview": "^1.57.2",
-    "@typescript-eslint/eslint-plugin": "^6.4.1",
-    "@typescript-eslint/parser": "^6.4.1",
-    "@vscode/test-electron": "^2.3.4",
-    "esbuild": "^0.16.17",
-    "eslint": "^8.47.0",
-    "glob": "^10.3.3",
-    "mocha": "^10.2.0",
-    "typescript": "^5.1.6"
-  },
-  "dependencies": {
-    "@types/markdown-it": "^13.0.1",
-    "@vscode/webview-ui-toolkit": "^1.2.2",
-    "chalk": "^5.3.0",
-    "markdown-it": "^13.0.1",
-    "toml": "^3.0.0"
-  }
 }

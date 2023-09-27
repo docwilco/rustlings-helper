@@ -9,7 +9,6 @@ import {
 } from './exercise';
 import { RustlingsFolder } from './rustlingsFolder';
 import { promisify } from 'util';
-import { showWizardForExercise } from './wizardSteps';
 
 const timeoutPromise = promisify(setTimeout);
 
@@ -51,6 +50,8 @@ export class RustlingsExercisesProvider
     private _watchTerminal: vscode.Terminal | undefined = undefined;
 
     private _runQueue: Exercise[] = [];
+
+    private _inhibitActiveEditorEvent = false;
 
     constructor() {
     }
@@ -246,8 +247,17 @@ export class RustlingsExercisesProvider
             (rustlings) => rustlings.queueExerciseRuns()
         );
         this._checkExerciseOpen();
-        this._rustlingsFolders.forEach((rustlings) => {
-            rustlings.setupLSP();
+
+        const startupConfig = vscode.workspace.getConfiguration('rustlingsHelper.startup');
+        const autoSetupLSP = startupConfig.get<boolean>('setupLSP');
+        if (autoSetupLSP) {   
+            this._rustlingsFolders.forEach((rustlings) => {
+                rustlings.setupLSP();
+            });
+        }
+        const autoWatch = startupConfig.get<boolean>('showWatchTerminal');
+        if (autoWatch) {
+            this.rustlingsWatch();
         }
     }
 
@@ -331,6 +341,7 @@ export class RustlingsExercisesProvider
             const document = await vscode.workspace.openTextDocument(
                 nextExercise.uri
             );
+            this._inhibitActiveEditorEvent = true;
             await vscode.window.showTextDocument(document);
             if (currentEditor === undefined) {
                 return;
@@ -338,6 +349,7 @@ export class RustlingsExercisesProvider
             // Now to focus and close the current exercise
             await vscode.window.showTextDocument(currentEditor.document);
             await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+            this._inhibitActiveEditorEvent = false;
             vscode.window.showTextDocument(document);
         }
     }
@@ -384,9 +396,14 @@ export class RustlingsExercisesProvider
     public async queueExerciseRun(exercise: Exercise, priority?: boolean): Promise<void> {
         let length;
         if (priority) {
+            this._runQueue = this._runQueue.filter((e) => e !== exercise);
             length = this._runQueue.unshift(exercise);
         } else {
-            length = this._runQueue.push(exercise);
+            if (!this._runQueue.includes(exercise)) {
+                length = this._runQueue.push(exercise);
+            } else {
+                length = this._runQueue.length;
+            }
         }
         exercise.done = undefined;
         exercise.success = undefined;
@@ -396,17 +413,14 @@ export class RustlingsExercisesProvider
             // I'm pretty sure this works
             return;
         }
-        // Use setTime to give other parts a chance to add to the queue or
-        // update the UI
-        const runQueue = this._runQueue;
-        setTimeout(async function runFirstExercise() {
-            const exercise = runQueue.shift();
-            if (exercise === undefined) {
-                return;
-            }
+        setTimeout(this.handleQueue.bind(this));
+    }
+
+    public async handleQueue() {
+        while (this._runQueue.length > 0) {
+            const exercise = this._runQueue.shift()!;
             await exercise.run();
-            setTimeout(runFirstExercise);
-        });
+        }
     }
 
     public async queueExerciseRunByUri(uri: Uri): Promise<void> {
@@ -421,6 +435,9 @@ export class RustlingsExercisesProvider
     public async checkActiveEditor(
         editor: vscode.TextEditor | undefined
     ) {
+        if (this._inhibitActiveEditorEvent) {
+            return;
+        }
         const exercise = editor
             ? this.exerciseByUri(editor.document.uri)
             : undefined;
@@ -433,8 +450,11 @@ export class RustlingsExercisesProvider
             return;
         }
         this.treeView?.reveal(exercise.treeItem!, { select: true });
-        await exercise.run();
-        await exercise.printRunOutput();
+        if (exercise.done === undefined || exercise.success === undefined) {
+            this.queueExerciseRun(exercise, true);
+        } else {
+            exercise.printRunOutput();
+        }
     }
 
     public async toggleDone(treeItem: vscode.TreeItem) {
@@ -461,19 +481,26 @@ export class RustlingsExercisesProvider
         }
     }
 
-    async showHint() {
-        // TODO
-    }
-
-    public showReadme() {
-        const document = vscode.window.activeTextEditor?.document;
-        if (document === undefined) {
+    public async resetExercise(treeItem?: vscode.TreeItem) {
+        let exercise: Exercise | undefined;
+        if (treeItem === undefined) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor === undefined) {
+                return;
+            }
+            exercise = this.exerciseByUri(editor.document.uri);
+            if (exercise === undefined) {
+                return;
+            }
+        } else if (treeItem instanceof ExerciseTreeLeaf) {
+            exercise = treeItem.exercise;
+        }
+        if (exercise === undefined) {
             return;
         }
-        const documentUri = document.uri;
-        const readmeUri = Uri.joinPath(documentUri, '../README.md');
-        vscode.commands.executeCommand('vscode.open', readmeUri);
+        return exercise.reset();
     }
+
 }
 
 export abstract class ExerciseTreeItem extends vscode.TreeItem {
@@ -640,6 +667,8 @@ export class ExerciseTree extends ExerciseTreeBranch {
         exercises: Exercise[]
     ) {
         super(_onDidChangeTreeData, undefined, undefined, folderName);
+        // Overwritten with rustlingsTreeWatching or rustlingsTreeNotWatching
+        // so don't use this.
         this.contextValue = 'rustlings';
         this.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
         exercises.forEach((exercise) => {
