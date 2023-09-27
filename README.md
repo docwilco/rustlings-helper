@@ -6,14 +6,17 @@ A helper extension for the Rustlings exercises. It doesn't do the exercises for 
 ## Features
 
 * Shows the equivalent of `rustlings watch` in the VSCode terminal.
+
   ![Watch Terminal](media/watch-terminal.png)
+
 * Always shows the output for the exercise you have open.
 * Updates the output if the file you have open changes for any reason.
 * Automatically opens the next exercise when the current one compiles, runs, and passes tests and is marked as done.
 * Can show the provided hint for the exercises.
 * Can show the README for the sections of exercises.
 * Hotkey for marking an exercise as done or not done. (`Ctrl+Alt+D` or `Ctrl+Cmd+D`)
-* Shows a tree view of the exercises, with their status. 
+* Shows a tree view of the exercises, with their status.
+
   ![Tree View](media/tree-view.png)
   
   The checkbox indicates whether or not an exercise is marked as done. The warning icon means that the exercise does not compile, run, or pass tests. You can use the section checkboxes to mark/unmark an entire section in one go.
@@ -40,7 +43,9 @@ Calling out known issues can help limit users opening duplicate issues against y
 ## Release Notes
 
 Users appreciate release notes as you update your extension.
+### 0.1.1
 
+Fix up README.md.
 ### 0.1.0
 
 Preview release of the Rustlings Helper extension.
