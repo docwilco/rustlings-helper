@@ -8,8 +8,9 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
-## [0.1.2] - 2023-10-09
+## [0.1.4] - 2023-10-09
 
+- Messed up versioning somehow, hence the jump
 - Removed some dead code
 - Add setting to not auto-open next exercise on startup
 - Another small fixup of README.md

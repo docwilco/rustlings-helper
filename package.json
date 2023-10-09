@@ -5,7 +5,7 @@
     "description": "A helper extension for the Rustlings exercises. It doesn't do the exercises for you, it does everything the Rustlings CLI does but inside the VSCode IDE. And plenty more!",
     "preview": true,
     "icon": "media/rustlings.png",
-    "version": "0.1.2",
+    "version": "0.1.4",
     "license": "SEE LICENSE IN LICENSE.md",
     "pricing": "Free",
     "homepage": "https://github.com/docwilco/rustlings-helper",
