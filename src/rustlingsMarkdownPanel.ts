@@ -34,7 +34,6 @@ export class RustlingsMarkdownPanel {
             this._panel.webview,
             extensionUri
         );
-        this._setWebviewMessageListener(this._panel.webview);
     }
 
     public static render(
@@ -139,7 +138,7 @@ export class RustlingsMarkdownPanel {
                             img-src ${webview.cspSource} https:;
                             script-src 'nonce-${nonce}';"
                     >
-                    <title>Hello World!</title>
+                    <title>Rustlings Info</title>
                 </head>
                 <body>
                     <vscode-panels>
@@ -183,20 +182,4 @@ export class RustlingsMarkdownPanel {
         `;
     }
 
-    private _setWebviewMessageListener(webview: vscode.Webview) {
-        webview.onDidReceiveMessage(
-            (message: any) => {
-                const command = message.command;
-                const text = message.text;
-
-                switch (command) {
-                    case "hello":
-                        vscode.window.showInformationMessage(text);
-                        return;
-                }
-            },
-            undefined,
-            this._disposables
-        );
-    }
 }

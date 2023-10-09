@@ -246,7 +246,11 @@ export class RustlingsExercisesProvider
         this._rustlingsFolders.forEach(
             (rustlings) => rustlings.queueExerciseRuns()
         );
-        this._checkExerciseOpen();
+        const config = vscode.workspace.getConfiguration('rustlingsHelper');
+        const autoOpen = config.get<boolean>('startup.openNextExercise');
+        if (autoOpen) {
+            this._checkExerciseOpen();
+        }
 
         const startupConfig = vscode.workspace.getConfiguration('rustlingsHelper.startup');
         const autoSetupLSP = startupConfig.get<boolean>('setupLSP');

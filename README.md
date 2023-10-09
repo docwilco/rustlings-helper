@@ -10,7 +10,7 @@ A helper extension for the Rustlings exercises. It doesn't do the exercises for 
   ![Watch Terminal](media/watch-terminal.png)
 
 * Always shows the output for the exercise you have open.
-* Updates the output if the file you have open changes for any reason.
+* Updates the output of the file you have open changes for any reason.
 * Automatically opens the next exercise when the current one compiles, runs, and passes tests and is marked as done.
 * Can show the provided hint for the exercises.
 * Can show the README for the sections of exercises.
@@ -42,10 +42,4 @@ Calling out known issues can help limit users opening duplicate issues against y
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
-### 0.1.1
-
-Fix up README.md.
-### 0.1.0
-
-Preview release of the Rustlings Helper extension.
+See [CHANGELOG.md](CHANGELOG.md).

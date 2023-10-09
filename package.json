@@ -5,7 +5,7 @@
     "description": "A helper extension for the Rustlings exercises. It doesn't do the exercises for you, it does everything the Rustlings CLI does but inside the VSCode IDE. And plenty more!",
     "preview": true,
     "icon": "media/rustlings.png",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "license": "SEE LICENSE IN LICENSE.md",
     "pricing": "Free",
     "homepage": "https://github.com/docwilco/rustlings-helper",
@@ -184,6 +184,11 @@
                         "type": "boolean",
                         "default": true,
                         "markdownDescription": "Whether to show the built-in watch terminal on startup. This extension emulates the output of `rustlings watch` in the terminal, but it can be disabled here if you prefer to use the real `rustlings watch` command instead."
+                    },
+                    "rustlingsHelper.startup.openNextExercise": {
+                        "type": "boolean",
+                        "default": true,
+                        "markdownDescription": "Whether to open the next exercise on startup. If you prefer to open the exercises manually, you can disable this setting."
                     }
                 }
             }
